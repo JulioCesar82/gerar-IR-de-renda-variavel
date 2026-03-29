@@ -30,7 +30,7 @@ Atualmente tempos suporte ao último template disponível (2023) através dessas
 
 ### Teste unitários
 
-Para trazer maior segurança nos dados gerados com base nos arquivos de entrada, é possível baixar os arquivos no Portal B3 em Excel e converter para JSON, substituindo o conteúdo dos arquivos [documentation\example-b3-files\movimentacao-exemplo.json](./documentation/example-b3-files/movimentacao-exemplo.json) e [documentation\example-b3-files\negociacao-exemplo.json](./documentation/example-b3-files/negociacao-exemplo.json), execute rodando o comando `npm run test`. Dessa forma, serão gerados arquivos de teste unitário para cada um dos seu ativos (O ano de 2024 esta fixo no código, então os testes serão focados neste ano, mas fique a vontade para alterar ou até mesmo deixar dinâmico) e comparar os dados gerados com alguma plataforma de acompanhamento de ativos.
+Para trazer maior segurança nos dados gerados com base nos arquivos de entrada, é possível baixar os arquivos no Portal B3 em Excel e converter para JSON, substituindo o conteúdo dos arquivos [documentation\example-b3-files\movimentacao-exemplo.json](./documentation/example-b3-files/movimentacao-exemplo.json) e [documentation\example-b3-files\negociacao-exemplo.json](./documentation/example-b3-files/negociacao-exemplo.json), execute rodando o comando `npm run test`. Dessa forma, serão gerados arquivos de teste unitário para cada um dos seu ativos (O ano de 2025 esta fixo no código em [package.json](./package.json), então os testes serão focados neste ano, mas fique a vontade para alterar ou até mesmo deixar dinâmico) e comparar os dados gerados com alguma plataforma de acompanhamento de ativos.
 
 ---
 

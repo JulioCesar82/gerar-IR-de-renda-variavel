@@ -8,8 +8,8 @@ from collections import defaultdict
 from pathlib import Path
 
 # --- Configuration ---
-DEFAULT_NEGOCIACAO_PATH = '../documentation/arquivos-b3/negociacao-exemplo.json'
-DEFAULT_MOVIMENTACAO_PATH = '../documentation/arquivos-b3/movimentacao-exemplo.json'
+DEFAULT_NEGOCIACAO_PATH = '../documentation/example-b3-files/negociacao-exemplo.json'
+DEFAULT_MOVIMENTACAO_PATH = '../documentation/example-b3-files/movimentacao-exemplo.json'
 DECLARATION_YEAR = 2024 # Default year, can be overridden
 
 

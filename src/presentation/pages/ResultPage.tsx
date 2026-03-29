@@ -11,14 +11,103 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Divider
+  Divider,
+  Collapse,
+  IconButton
 } from '@mui/material';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 
 import { useAppContext } from '../context/AppContext';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { Container } from '../../infrastructure/di/Container';
 import { tryDownloadFile } from 'src/utils/presentation';
+
+/**
+ * Collapsible row for monthly results
+ */
+const CollapsibleRow: React.FC<{ row: any }> = (props) => {
+  const { row } = props;
+  const [open, setOpen] = React.useState(false);
+
+  const monthNames = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+  ];
+
+  return (
+    <React.Fragment>
+      <TableRow sx={{ '& > *': { borderBottom: 'unset' } }}>
+        <TableCell width="50">
+          <IconButton
+            aria-label="expand row"
+            size="small"
+            onClick={() => setOpen(!open)}
+          >
+            {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+          </IconButton>
+        </TableCell>
+        <TableCell component="th" scope="row">
+          {monthNames[row.month - 1]}
+        </TableCell>
+        <TableCell align="right">{formatCurrency(row.totalSalesValue)}</TableCell>
+        <TableCell align="right" sx={{ color: row.netResult < 0 ? 'error.main' : 'success.main' }}>
+          {formatCurrency(row.netResult)}
+        </TableCell>
+        <TableCell align="right">{formatCurrency(row.taxDue)}</TableCell>
+        <TableCell align="right">{formatCurrency(row.taxWithheld)}</TableCell>
+        <TableCell align="right">{formatCurrency(row.taxToPay)}</TableCell>
+      </TableRow>
+      <TableRow>
+        <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
+          <Collapse in={open} timeout="auto" unmountOnExit>
+            <Box sx={{ margin: 1 }}>
+              <Typography variant="subtitle2" gutterBottom component="div" sx={{ fontWeight: 'bold' }}>
+                Detalhamento dos Ativos ({row.assetCategory})
+              </Typography>
+              <Table size="small" aria-label="trades">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Código</TableCell>
+                    <TableCell>Nome</TableCell>
+                    <TableCell align="right">Qtd</TableCell>
+                    <TableCell align="right">Preço Médio</TableCell>
+                    <TableCell align="right">Preço Venda</TableCell>
+                    <TableCell align="right">Venda Bruta</TableCell>
+                    <TableCell align="right">Resultado</TableCell>
+                    <TableCell align="right">Isento</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {row.tradeResults.map((trade: any, idx: number) => (
+                    <TableRow key={idx}>
+                      <TableCell>{trade.assetCode}</TableCell>
+                      <TableCell>{trade.assetName}</TableCell>
+                      <TableCell align="right">{trade.quantity}</TableCell>
+                      <TableCell align="right">{formatCurrency(trade.purchasePrice)}</TableCell>
+                      <TableCell align="right">{formatCurrency(trade.salePrice)}</TableCell>
+                      <TableCell align="right">{formatCurrency(trade.saleValue)}</TableCell>
+                      <TableCell align="right" sx={{ color: trade.profitOrLoss < 0 ? 'error.main' : 'success.main' }}>
+                        {formatCurrency(trade.profitOrLoss)}
+                      </TableCell>
+                      <TableCell align="right">{trade.isExempt ? 'Sim' : 'Não'}</TableCell>
+                    </TableRow>
+                  ))}
+                  {row.tradeResults.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={8} align="center">Nenhum trade detalhado para este mês.</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </Box>
+          </Collapse>
+        </TableCell>
+      </TableRow>
+    </React.Fragment>
+  );
+};
 
 /**
  * Result page component
@@ -190,75 +279,6 @@ export const ResultPage: React.FC = () => {
     ...asset
   }));
   
-  // Define columns for the Monthly Results DataGrid
-  const monthlyResultsColumns: GridColDef[] = [
-    { 
-      field: 'month', 
-      headerName: 'Mês', 
-      width: 120,
-      valueFormatter: (params) => {
-        const monthNames = [
-          'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-          'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-        ];
-        return monthNames[params.value - 1] || '';
-      }
-    },
-    { 
-      field: 'totalSalesValue', 
-      headerName: 'Vendas', 
-      type: 'number',
-      width: 150,
-      align: 'right',
-      headerAlign: 'right',
-      valueFormatter: (params) => formatCurrency(params.value)
-    },
-    { 
-      field: 'netResult', 
-      headerName: 'Lucro/Prejuízo', 
-      type: 'number',
-      width: 150,
-      align: 'right',
-      headerAlign: 'right',
-      valueFormatter: (params) => formatCurrency(params.value),
-      cellClassName: (params) => params.value < 0 ? 'negative-value' : 'positive-value'
-    },
-    { 
-      field: 'taxDue', 
-      headerName: 'Imposto Devido', 
-      type: 'number',
-      width: 150,
-      align: 'right',
-      headerAlign: 'right',
-      valueFormatter: (params) => formatCurrency(params.value)
-    },
-    { 
-      field: 'taxWithheld', 
-      headerName: 'Imposto Retido', 
-      type: 'number',
-      width: 150,
-      align: 'right',
-      headerAlign: 'right',
-      valueFormatter: (params) => formatCurrency(params.value)
-    },
-    { 
-      field: 'taxToPay', 
-      headerName: 'Imposto a Pagar', 
-      type: 'number',
-      width: 150,
-      align: 'right',
-      headerAlign: 'right',
-      valueFormatter: (params) => formatCurrency(params.value)
-    }
-  ];
-  
-  // Prepare rows for the Monthly Results DataGrid
-  const monthlyResultsRows = declaration.monthlyResults
-    .map((result, index) => ({
-      id: `${result.year}-${result.month}`, // Unique ID based on year and month
-      ...result
-    }));
-  
   return (
     <Box>
       <Typography variant="h4" component="h1" gutterBottom>
@@ -427,30 +447,31 @@ export const ResultPage: React.FC = () => {
               Resultados Mensais
             </Typography>
             
-            <Box sx={{ height: 400, width: '100%' }}>
-              <DataGrid
-                rows={monthlyResultsRows}
-                columns={monthlyResultsColumns}
-                initialState={{
-                  pagination: {
-                    paginationModel: { page: 0, pageSize: 12 },
-                  },
-                  sorting: {
-                    sortModel: [{ field: 'month', sort: 'asc' }],
-                  },
-                }}
-                pageSizeOptions={[5, 12]}
-                checkboxSelection={false}
-                disableRowSelectionOnClick
-                density="standard"
-                sx={{ 
-                  '& .MuiDataGrid-cell': { fontSize: '0.875rem' },
-                  '& .MuiDataGrid-columnHeader': { fontSize: '0.875rem', fontWeight: 'bold' },
-                  '& .negative-value': { color: 'error.main' },
-                  '& .positive-value': { color: 'success.main' }
-                }}
-              />
-            </Box>
+            <TableContainer component={Paper} variant="outlined">
+              <Table aria-label="collapsible table" size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell width="50" />
+                    <TableCell>Mês</TableCell>
+                    <TableCell align="right">Vendas</TableCell>
+                    <TableCell align="right">Lucro/Prejuízo</TableCell>
+                    <TableCell align="right">Imp. Devido</TableCell>
+                    <TableCell align="right">Imp. Retido</TableCell>
+                    <TableCell align="right">Imp. a Pagar</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {declaration.monthlyResults.map((row, idx) => (
+                    <CollapsibleRow key={`${row.year}-${row.month}-${idx}`} row={row} />
+                  ))}
+                  {declaration.monthlyResults.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} align="center">Nenhum resultado mensal encontrado.</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
           </Box>
         </Stack>
       </Paper>
