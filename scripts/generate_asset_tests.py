@@ -10,7 +10,7 @@ from pathlib import Path
 # --- Configuration ---
 DEFAULT_NEGOCIACAO_PATH = '../documentation/example-b3-files/negociacao-exemplo.json'
 DEFAULT_MOVIMENTACAO_PATH = '../documentation/example-b3-files/movimentacao-exemplo.json'
-DECLARATION_YEAR = 2024 # Default year, can be overridden
+DECLARATION_YEAR = 2025 # Default year, can be overridden
 
 
 OUTPUT_HISTORY_DIR = '../src/infrastructure/adapters/__tests__/calculation/history'
@@ -178,6 +178,7 @@ export const mockExternalTickerInfoProvider: ExternalTickerInfoProviderPort = {{
 
 // Basic mock for ExternalStaticEventInfoAdapter
 export const mockStaticEventInfoProvider: ExternalEventInfoProviderPort = {{
+    getEventsForAsset: new StaticEventInfoAdapter().getEventsForAsset,
     getEventFactor: new StaticEventInfoAdapter().getEventFactor,
     //getEventFactor: jest.fn().mockResolvedValue(null), // Default mock returns null
 
@@ -1174,8 +1175,9 @@ describe('{ticker} Asset Calculation and DBK Generation', () => {{
 
     console.log(`{ticker} processing and declaration generation complete.`);
 
-    printSummaryPosition(resumo, "Resumo Anual da Posição");
-    printSummaryPosition(expectedResumoComEventos, "Resumo Anual da Posição (incluindo eventos)");
+    printSummaryPosition(resumo, "[TESTE] Resumo Anual da Posição");
+    printSummaryPosition(expectedResumoComEventos, "[TESTE] Resumo Anual da Posição (incluindo eventos)");
+    console.log(`[TESTE] Generated Declaration`, JSON.stringify(declaration, null, 2));
   }});
 
   

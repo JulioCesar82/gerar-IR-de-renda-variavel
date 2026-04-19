@@ -123,6 +123,42 @@ export class AssetProcessor implements AssetProcessorPort {
       } as MappedSpecialEvent;
     });
 
+    // --- Inject missing events from external provider ---
+    // Identify all unique assets in the transactions
+    const uniqueAssets = new Set<string>();
+    transactions.forEach(t => uniqueAssets.add(getAssetKey(t.assetCode)));
+
+    console.log(`AssetProcessor: Checking for missing events for ${uniqueAssets.size} unique assets`);
+
+    for (const assetCode of uniqueAssets) {
+      // Fetch known events for this asset from the provider
+      const externalEvents = await this.externalEventInfoProvider.getEventsForAsset(assetCode);
+
+      for (const extEvent of externalEvents) {
+        const mappedExtType = this.mapEventType(extEvent.type);
+
+        // Check if this event already exists in the B3 data
+        // Use a window of ±5 days to avoid duplicates if dates are slightly different
+        const alreadyExists = mappedSpecialEvents.some(
+          e =>
+            getAssetKey(e.assetCode) === assetCode &&
+            e.type === mappedExtType &&
+            Math.abs(e.date.getTime() - extEvent.date.getTime()) <= 5 * 24 * 60 * 60 * 1000
+        );
+
+        if (!alreadyExists) {
+          console.log(
+            `AssetProcessor: Injecting missing ${extEvent.type} for ${assetCode} on ${extEvent.date.toLocaleDateString()}`
+          );
+          mappedSpecialEvents.push({
+            ...extEvent,
+            type: mappedExtType,
+            _originalStringType: typeof extEvent.type === 'string' ? extEvent.type : undefined
+          } as MappedSpecialEvent);
+        }
+      }
+    }
+
     let filteredTransactions = transactions;
     let filteredMappedSpecialEvents = mappedSpecialEvents;
 
@@ -391,22 +427,6 @@ export class AssetProcessor implements AssetProcessorPort {
       positionsMap.set(key, position);
     }
 
-    // Ensure transactionsHistory exists before pushing
-    if (!position.transactionsHistory) {
-      position.transactionsHistory = [];
-    }
-
-    position.transactionsHistory.push({
-      date: transaction.date,
-      type: transaction.type,
-      quantity: transaction.quantity,
-      unitPrice: transaction.unitPrice,
-      totalValue: transaction.totalValue,
-      fees: transaction.fees,
-      taxes: transaction.taxes,
-      netValue: transaction.netValue
-    });
-
     if (transaction.type === 'buy') {
       // Add debug log before processing buy transaction
       console.log(`[DEBUG] Before buy: ${position.assetCode}, Qtd=${position.quantity.toFixed(4)}, TotalCost=${position.totalCost.toFixed(4)}, AvgPrice=${position.averagePrice.toFixed(4)}, BuyQtd=${transaction.quantity}, Date=${transaction.date.toLocaleDateString()}`);
@@ -458,6 +478,24 @@ export class AssetProcessor implements AssetProcessorPort {
       console.log(`[DEBUG] After sell: ${position.assetCode}, Qtd=${position.quantity.toFixed(4)}, TotalCost=${position.totalCost.toFixed(4)}, AvgPrice=${position.averagePrice.toFixed(4)}, Date=${transaction.date.toLocaleDateString()}`);
     }
 
+    // Update history with resulting state
+    const historyEntry = {
+      date: transaction.date,
+      type: transaction.type,
+      description: transaction.type === 'buy' ? 'Compra' : 'Venda',
+      quantity: transaction.quantity,
+      unitPrice: transaction.unitPrice,
+      totalValue: transaction.totalValue,
+      fees: transaction.fees,
+      taxes: transaction.taxes,
+      netValue: transaction.netValue,
+      resultingQuantity: position.quantity,
+      resultingAveragePrice: position.averagePrice,
+      resultingTotalCost: position.totalCost
+    };
+
+    position.transactionsHistory.push(historyEntry);
+
     console.log(`[DEBUG - processTransaction] After processing: ${position.assetCode}, Qtd=${position.quantity.toFixed(4)}, TotalCost=${position.totalCost.toFixed(4)}, AvgPrice=${position.averagePrice.toFixed(4)}, Date=${transaction.date.toLocaleDateString()}`);
     position.lastUpdateDate = transaction.date;
   }
@@ -482,6 +520,9 @@ export class AssetProcessor implements AssetProcessorPort {
     const originalStringType = event._originalStringType;
 
     // Lógica de atualização da posição baseada no evento
+    let eventDescription = originalStringType || (typeof eventTypeForSwitch === 'string' ? eventTypeForSwitch : 'Evento Especial');
+    let eventApplied = false;
+
     switch (
       eventTypeForSwitch // Switch on the mapped type (can be enum or string)
     ) {
@@ -499,8 +540,10 @@ export class AssetProcessor implements AssetProcessorPort {
           position.totalCost = 0; // Ensure cost is zero if quantity is zero
         }
         console.info(` -> Qtd after=${position.quantity.toFixed(4)}, New Avg Price=${position.averagePrice.toFixed(4)}`);
-
+        eventApplied = true;
+        eventDescription = 'Bonificação';
         break;
+
       case SpecialEventType.STOCK_SPLIT: {
         // Add debug log before processing stock split
         console.log(`[DEBUG] Before stock split: ${position.assetCode}, Qtd=${position.quantity.toFixed(4)}, TotalCost=${position.totalCost.toFixed(4)}, AvgPrice=${position.averagePrice.toFixed(4)}, Factor=${event.factor}, Date=${event.date.toLocaleDateString()}`);
@@ -536,11 +579,11 @@ export class AssetProcessor implements AssetProcessorPort {
             position.averagePrice = 0; // Avoid division by zero if quantity becomes zero unexpectedly
           }
           console.info(` -> Qtd after=${position.quantity.toFixed(4)}, New Avg Price=${position.averagePrice.toFixed(4)}`);
-
+          eventApplied = true;
+          eventDescription = `Desdobramento (1:${factor})`;
         } else {
           // Fator é OBRIGATÓRIO para Desdobramento/Grupamento
           console.warn(`Stock split event for ${position.assetCode} is missing a valid factor > 1:`, event);
-
         }
 
         // Add debug log after processing stock split
@@ -584,15 +627,15 @@ export class AssetProcessor implements AssetProcessorPort {
           // Consider rounding quantity after division if needed
           // position.quantity = Math.round(position.quantity * 10000) / 10000;
           console.info(` -> Qtd after=${position.quantity.toFixed(4)}, New Avg Price=${position.averagePrice.toFixed(4)}`);
-
+          eventApplied = true;
+          eventDescription = `Grupamento (${updatedFactor}:1)`;
         } else {
           // Fator é OBRIGATÓRIO para Desdobramento/Grupamento
           console.warn(`Reverse split event for ${position.assetCode} is missing a valid factor > 1:`, event);
-
         }
         break;
       }
-      // case SpecialEventType.SUBSCRIPTION: // Ignorando esses eventos porque a B3 já adionou esse evento como "Compra"
+          // case SpecialEventType.SUBSCRIPTION: // Ignorando esses eventos porque a B3 já adionou esse evento como "Compra"
       //   // Subscription adds quantity and increases total cost
       //   position.quantity += event.quantity;
       //   position.totalCost += event.netValue; // Assuming netValue is the cost of subscribed shares
@@ -637,7 +680,6 @@ export class AssetProcessor implements AssetProcessorPort {
           } else {
             // Price is 0, treat like Bonificação (no cost change)
             console.info(`Applying ${originalStringType} (Price = 0): Qtd added=${addedQuantity.toFixed(4)}, No cost change, Date=${event.date.toLocaleDateString('pt-BR')}`);
-
           }
 
           // Recalculate average price
@@ -648,9 +690,10 @@ export class AssetProcessor implements AssetProcessorPort {
             position.totalCost = 0;
           }
           console.info(` -> Qtd after=${position.quantity.toFixed(4)}, New Total Cost=${position.totalCost.toFixed(4)}, New Avg Price=${position.averagePrice.toFixed(4)}`);
-
+          eventApplied = true;
+          eventDescription = originalStringType;
         } 
-        // else if (originalStringType === 'Cessão de Direitos - Solicitada') { // Ignorando esses eventos porque a B3 já adionou esse evento como "Compra"
+           // else if (originalStringType === 'Cessão de Direitos - Solicitada') { // Ignorando esses eventos porque a B3 já adionou esse evento como "Compra"
         //   // This event decreases quantity and removes cost based on the retrieved price.
         //   let averagePrice = 0; // Default to 0 if not found or provider doesn't support it
         //   // Get the average price from the external provider
@@ -728,18 +771,20 @@ export class AssetProcessor implements AssetProcessorPort {
               position.quantity > 0.0001 ? position.totalCost / position.quantity : 0;
             
               console.info(` -> Qtd after=${position.quantity.toFixed(4)}, Cost removed=${costToRemove.toFixed(4)}, New Total Cost=${position.totalCost.toFixed(4)}, New Avg Price=${position.averagePrice.toFixed(4)}`);
-
+            eventApplied = true;
+            eventDescription = 'Fração em Ativos (Venda)';
           } else {
             console.warn(`[${position.assetCode}] Attempt to remove fraction ${quantityToRemove} on ${event.date.toLocaleDateString()} when only ${position.quantity.toFixed(4)} available. Zeroing position.`);
 
             position.quantity = 0;
             position.totalCost = 0;
             position.averagePrice = 0;
+            eventApplied = true;
+            eventDescription = 'Fração em Ativos (Venda - Zerou)';
           }
         } else {
           // Log for other strings mapped to OTHER
           console.log(`[${position.assetCode}] Skipping unhandled original special event string type mapped to OTHER: ${originalStringType} on ${event.date.toLocaleDateString()}`);
-
         }
         break;
       }
@@ -753,7 +798,6 @@ export class AssetProcessor implements AssetProcessorPort {
         // Handle unmapped strings or unexpected enum values
         if (typeof eventTypeForSwitch === 'string') {
           console.log(`[${position.assetCode}] Skipping unhandled special event string type: ${eventTypeForSwitch} on ${event.date.toLocaleDateString()}`);
-
         } else {
           // This case should ideally not be reached if mapping is comprehensive
           // Safely access enum name
@@ -761,10 +805,27 @@ export class AssetProcessor implements AssetProcessorPort {
             key => SpecialEventType[key as keyof typeof SpecialEventType] === eventTypeForSwitch
           );
           console.log(`[${position.assetCode}] Skipping unhandled special event enum type: ${enumName || eventTypeForSwitch} on ${event.date.toLocaleDateString()}`);
-
         }
         break;
     }
+
+    if (eventApplied) {
+      position.transactionsHistory.push({
+        date: event.date,
+        type: 'event',
+        description: eventDescription,
+        quantity: event.quantity,
+        unitPrice: event.unitPrice || 0,
+        totalValue: event.totalValue || 0,
+        fees: event.fees || 0,
+        taxes: event.taxes || 0,
+        netValue: event.netValue || 0,
+        resultingQuantity: position.quantity,
+        resultingAveragePrice: position.averagePrice,
+        resultingTotalCost: position.totalCost
+      });
+    }
+
     console.log(`[DEBUG - processSpecialEvent] After processing: ${position.assetCode}, Qtd=${position.quantity.toFixed(4)}, TotalCost=${position.totalCost.toFixed(4)}, AvgPrice=${position.averagePrice.toFixed(4)}, Date=${event.date.toLocaleDateString()}, EventType=${event.type}, OriginalStringType=${event._originalStringType}`);
     position.lastUpdateDate = event.date;
   }

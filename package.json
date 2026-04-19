@@ -41,7 +41,7 @@
     "predeploy": "npm run build",
     "deploy": "gh-pages -d build",
     "test": "python scripts/generate_asset_tests.py --year 2025 && react-scripts test",
-    "test:save-log": "npm run test > unit-test.log",
+    "test:specific-asset": "react-scripts test src/infrastructure/adapters/__tests__/calculation/EGIE.test.ts",
     "eject": "react-scripts eject",
     "postinstall": "npm start"
   },

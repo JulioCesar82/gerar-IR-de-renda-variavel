@@ -24,31 +24,31 @@ function searchWithinDateWindow<T>(
   // First try exact date match
   const normalizedKey = normalizeKey(ticker, eventType, eventDate);
   const exactMatch = map.get(normalizedKey);
-  
+
   if (exactMatch !== undefined) {
     return [exactMatch, 0];
   }
-  
+
   // If not found, try with a ±windowDays day window
   const dayInMs = 24 * 60 * 60 * 1000; // milliseconds in a day
-  
+
   // Try each day in the window, starting from closest to furthest
   for (let dayOffset = 1; dayOffset <= windowDays; dayOffset++) {
     // Try future date
     const futureDateKey = normalizeKey(
-      ticker, 
-      eventType, 
+      ticker,
+      eventType,
       new Date(eventDate.getTime() + dayOffset * dayInMs)
     );
     const futureMatch = map.get(futureDateKey);
     if (futureMatch !== undefined) {
       return [futureMatch, dayOffset];
     }
-    
+
     // Try past date
     const pastDateKey = normalizeKey(
-      ticker, 
-      eventType, 
+      ticker,
+      eventType,
       new Date(eventDate.getTime() - dayOffset * dayInMs)
     );
     const pastMatch = map.get(pastDateKey);
@@ -56,17 +56,50 @@ function searchWithinDateWindow<T>(
       return [pastMatch, -dayOffset];
     }
   }
-  
+
   return [undefined, 0];
 }
 
 export class StaticEventInfoAdapter implements ExternalEventInfoProviderPort {
+  async getEventsForAsset(ticker: string, year?: number): Promise<any[]> {
+    const events: any[] = [];
+    const normalizedTargetTicker = normalizeKey(ticker, '', new Date()).split('-')[0]; // Extract normalized ticker part
+    
+    for (const info of specialEventFactorPriceMap.values()) {
+      const normalizedInfoTicker = normalizeKey(info.ticker, '', new Date()).split('-')[0];
+      
+      if (normalizedInfoTicker === normalizedTargetTicker) {
+        if (!year || info.date.getFullYear() === year) {
+          events.push({
+            date: info.date,
+            year: info.date.getFullYear(),
+            month: info.date.getMonth() + 1,
+            type: info.type,
+            assetCode: info.ticker,
+            assetName: info.ticker, // Default to ticker if name not available
+            quantity: 0, // Should be calculated based on position at that date
+            unitPrice: 0,
+            totalValue: 0,
+            fees: 0,
+            taxes: 0,
+            netValue: 0,
+            assetCategory: '', // To be filled by processor
+            brokerName: 'B3',
+            brokerCode: 'B3',
+            factor: info.factor
+          });
+        }
+      }
+    }
+    return events;
+  }
+
   async getEventFactor(ticker: string, eventType: string, eventDate: Date): Promise<number | null> {
     const normalizedKey = normalizeKey(ticker, eventType, eventDate);
     const [staticInfo, dayOffset] = searchWithinDateWindow<EventInfo>(
-      ticker, 
-      eventType, 
-      eventDate, 
+      ticker,
+      eventType,
+      eventDate,
       specialEventFactorPriceMap
     );
 
@@ -97,9 +130,9 @@ export class StaticEventInfoAdapter implements ExternalEventInfoProviderPort {
   ): Promise<number | null> {
     const normalizedKey = normalizeKey(ticker, eventType, eventDate);
     const [price, dayOffset] = searchWithinDateWindow<number>(
-      ticker, 
-      eventType, 
-      eventDate, 
+      ticker,
+      eventType,
+      eventDate,
       specialEventAveragePriceMap
     );
 

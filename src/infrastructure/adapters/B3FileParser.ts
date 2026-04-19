@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { FileParserPort } from '../../core/interfaces/FileParserPort';
 import { Transaction, MarketType, AssetCategory } from '../../core/domain/Transaction';
 import { SpecialEvent, SpecialEventType } from '../../core/domain/SpecialEvent';
+import { assetCategoryOverrides } from '../data/staticAssetCategoryOverrides';
 
 /**
  * Implementation of the FileParserPort interface for B3 files
@@ -507,6 +508,11 @@ export class B3FileParser implements FileParserPort {
   private determineAssetCategory(assetCode: string, marketType: MarketType): AssetCategory {
     if (!assetCode) {
       return AssetCategory.OTHER;
+    }
+
+    // Check for static overrides first
+    if (assetCategoryOverrides[assetCode]) {
+      return assetCategoryOverrides[assetCode];
     }
     
     // Check for options
