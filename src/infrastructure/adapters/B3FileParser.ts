@@ -234,36 +234,59 @@ export class B3FileParser implements FileParserPort {
    */
   protected processMovementData(data: any[], fileName: string = 'movimentacao.xlsx'): SpecialEvent[] {
     const specialEvents: SpecialEvent[] = [];
+
+    // Helper to get value from row handling encoding issues
+    const getValue = (row: any, possibleNames: string[]) => {
+      for (const name of possibleNames) {
+        if (row[name] !== undefined && row[name] !== null) return row[name];
+      }
+      return undefined;
+    };
     
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
+      const dateStr = getValue(row, ['Data', 'Data do Evento', 'Data do Negócio']);
+      const productStr = getValue(row, ['Produto', 'Ativo', 'Código de Negociação']);
+
       // Skip header rows or empty rows
-      if (!row['Data'] || !row['Produto']) {
+      if (!dateStr || !productStr) {
+        console.log(`Skipping row ${i + 2} due to missing date or product:`, row);
         continue;
       }
       // Store the row number (add 2 because Excel is 1-indexed and we have a header row)
-      const rowNumber = i + 2;
+      const rowNumber = (row as any)._original_index || i + 2;
       
-      const date = this.parseDate(row['Data']);
-      const type = this.parseEventType(row['Movimentação']);
-      const assetCode = this.getAssetKey(row['Produto']);
-      const assetName = row['Descrição'] || assetCode;
-      const quantity = this.parseNumber(row['Quantidade'] || 0);
-      const unitPrice = this.parseNumber(row['Preço unitário'] || row['Preço Unitário'] || 0);
-      const totalValue = this.parseNumber(row['Valor da Operação'] || 0);
-      const fees = this.parseNumber(row['Taxa'] || 0);
-      const taxes = this.parseNumber(row['Imposto'] || 0);
+      const date = this.parseDate(dateStr);
+      const eventStr = getValue(row, ['Movimentação', 'Movimentacao', 'Tipo de Movimentação']);
+      const type = this.parseEventType(eventStr || '');
+      const assetCode = this.getAssetKey(productStr);
+      const assetName = productStr; // Use raw product string for name
+      const quantity = this.parseNumber(getValue(row, ['Quantidade', 'Qtd']) || 0);
+      const unitPrice = this.parseNumber(getValue(row, ['Preço unitário', 'Preço Unitário', 'PreÃ§o unitÃ¡rio', 'Preco unitario', 'Preço']) || 0);
+      const totalValue = this.parseNumber(getValue(row, ['Valor da Operação', 'Valor da OperaÃ§Ã£o', 'Valor da Operacao', 'Valor']) || 0);
+      const fees = this.parseNumber(getValue(row, ['Taxa']) || 0);
+      const taxes = this.parseNumber(getValue(row, ['Imposto']) || 0);
       const netValue = totalValue - fees - taxes;
-      const assetCategory = row['Categoria de Ativo'] || 'OTHER';
-      const brokerName = row['Instituição'] || 'B3';
-      const brokerCode = row['Código da Instituição'] || '';
-      const description = row['Observação'] || '';
+      const assetCategory = this.determineAssetCategory(assetCode, productStr);
+      const brokerName = getValue(row, ['Instituição', 'Instituicao', 'Corretora']) || 'B3';
+      const brokerCode = getValue(row, ['Código da Instituição', 'Codigo da Instituicao']) || '';
+      const description = getValue(row, ['Observação', 'Observacao']) || '';
       
+      const rawOperationType = getValue(row, ['Entrada/Saída', 'Entrada/Saida', 'Entrada/SaÃ­da', 'Tipo']);
+      let operationType: 'Credito' | 'Debito' | undefined = undefined;
+      if (rawOperationType) {
+        const normalized = rawOperationType.trim().toUpperCase();
+        if (normalized.includes('CREDITO') || normalized.includes('CRÉDITO') || normalized === 'C') operationType = 'Credito';
+        else if (normalized.includes('DEBITO') || normalized.includes('DÉBITO') || normalized === 'D') operationType = 'Debito';
+      }
+
       specialEvents.push({
         date,
         year: date.getFullYear(),
         month: date.getMonth() + 1,
         type,
+        originalType: eventStr,
+        operationType,
         assetCode,
         assetName,
         quantity,
@@ -637,8 +660,13 @@ export class B3FileParser implements FileParserPort {
       // Fraction events are handled by AssetProcessor under OTHER type
       return SpecialEventType.OTHER;
     }
-    // Transfer - Map explicitly to OTHER without warning if it should be ignored
-    else if (normalizedEvent.includes('TRANSFERÊNCIA - LIQUIDAÇÃO')) {
+    // Transfer - Map explicitly to OTHER
+    // Use substrings to avoid encoding issues with special characters (Ã, Ã, etc.)
+    else if (
+      normalizedEvent.includes('TRANSFERÊNCIA - LIQUIDAÇÃO') ||
+      (normalizedEvent.includes('TRANSFER') && normalizedEvent.includes('LIQUIDA')) ||
+      (normalizedEvent.includes('TRANSFER') && !normalizedEvent.includes('EMPR'))
+    ) {
       return SpecialEventType.OTHER;
     }
     // Loans - Map to OTHER since there's no specific enum value

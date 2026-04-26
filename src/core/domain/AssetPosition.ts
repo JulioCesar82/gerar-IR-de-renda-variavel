@@ -106,6 +106,13 @@ export interface AssetPosition {
    * Pode ser necessário buscar essa informação externamente ou adicioná-la durante o processamento.
    */
   cnpj?: string;
+
+  /**
+   * Quantidade base utilizada exclusivamente para cálculo histórico do preço médio, 
+   * separada de eventos sem custo (como bonificações).
+   */
+  baseQuantity?: number;
+
   /**
    * Valor total do ativo em 31/12 do ano anterior.
    * Precisa ser calculado ou obtido das posições iniciais.

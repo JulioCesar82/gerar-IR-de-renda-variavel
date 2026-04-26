@@ -9,7 +9,7 @@ const normalizeDateMonth = (month: number): number => {
 };
 
 const normalizeDateDay = (day: number): number => {
-  return day + 2; // B3 Portal and Status Invest have this difference..
+  return day; // Removido o ajuste de +2 para alinhar com os arquivos reais da B3
 };
 
 // Helper function to split tickers and create map entries
