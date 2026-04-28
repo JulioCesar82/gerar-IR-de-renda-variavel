@@ -931,18 +931,27 @@ export async function calcularResumoAnualComEventos(
                     }}
                     
                     // Se tiver preço médio, ajustar o custo
-                    if (averagePrice !== null && averagePrice > 0) {{
-                        // Adicionar a quantidade
-                        totalQuantity += event.quantity;
-                        baseQuantity += event.quantity; // Adiciona a base pois gerou custo
+                    if (averagePrice !== null) {{
+                        if (averagePrice > 0) {{
+                            // Adicionar a quantidade
+                            totalQuantity += event.quantity;
+                            baseQuantity += event.quantity; // Adiciona a base pois gerou custo
 
-                        const addedCost = event.quantity * averagePrice;
-                        valorTotalInvestido += addedCost;
-                        console.info(`Aplicando ${{event.eventType}}: Qtd adicionada=${{event.quantity.toFixed(4)}}, Preço=${{averagePrice.toFixed(4)}}, Custo adicionado=${{addedCost.toFixed(4)}}, Data=${{event.date.toLocaleDateString('pt-BR')}}`);
+                            const addedCost = event.quantity * averagePrice;
+                            valorTotalInvestido += addedCost;
+                            console.info(`Aplicando ${{event.eventType}}: Qtd adicionada=${{event.quantity.toFixed(4)}}, Preço=${{averagePrice.toFixed(4)}}, Custo adicionado=${{addedCost.toFixed(4)}}, Data=${{event.date.toLocaleDateString('pt-BR')}}`);
+                        }} else {{
+                            // Se tiver preço 0 (merger/rename), apenas adiciona a quantidade sem custo (como bonificação)
+                            totalQuantity += event.quantity;
+                            // Aumentamos a baseQuantity para manter o preço médio consistente em caso de renomeio 1:1
+                            baseQuantity += event.quantity;
+                            console.info(`Aplicando ${{event.eventType}} (preço 0): Qtd adicionada=${{event.quantity.toFixed(4)}}, Base Qtd aumentada, Sem custo adicional (preservando custo existente), Data=${{event.date.toLocaleDateString('pt-BR')}}`);
+                        }}
+                    }} else if (event.eventType === 'Atualização') {{
+                        console.log(`Helper: Ignorando 'Atualização' para ${{event.assetCode}} pois não há preço estático (provável repetição de saldo) em ${{event.date.toLocaleDateString('pt-BR')}}`);
                     }} else {{
-                        // Se não tiver preço médio, apenas adiciona a quantidade sem custo (como bonificação)
+                        // Se não for Atualização mas não tiver preço, tratamos como bonificação (histórico)
                         totalQuantity += event.quantity;
-                        // Não aumentamos a baseQuantity
                         console.info(`Aplicando ${{event.eventType}} (sem preço): Qtd adicionada=${{event.quantity.toFixed(4)}}, Sem custo adicional, Data=${{event.date.toLocaleDateString('pt-BR')}}`);
                     }}
                 }} else {{
@@ -1163,16 +1172,16 @@ let expectedResumoComEventosDoAnoAnteriorEsperado: ResumoAnual;
 
 const expectedSoldMonthlyResults = calcularVendasDoAno(transactionsData, DECLARATION_YEAR);
 
-const expectedDividends = movementsData
-    .filter(m => m['{FIELD_MOV_TYPE}'].startsWith('{MOV_TYPE_DIVIDEND}') && parseDate(m['{FIELD_MOV_DATE}'])?.getFullYear() === DECLARATION_YEAR)
+const expectedDividends = (movementsData as any[])
+    .filter(m => m['{FIELD_MOV_TYPE}']?.startsWith('{MOV_TYPE_DIVIDEND}') && parseDate(m['{FIELD_MOV_DATE}'])?.getFullYear() === DECLARATION_YEAR)
     .reduce((sum, m) => sum + parseFloatSafe(m['{FIELD_MOV_TOTAL_COST}']), 0);
 
-const expectedJCP = movementsData
+const expectedJCP = (movementsData as any[])
     .filter(m => m['{FIELD_MOV_TYPE}'] === '{MOV_TYPE_JCP}' && parseDate(m['{FIELD_MOV_DATE}'])?.getFullYear() === DECLARATION_YEAR)
     .reduce((sum, m) => sum + parseFloatSafe(m['{FIELD_MOV_TOTAL_COST}']), 0);
 
-const expectedTotalDividends = movementsData
-    .filter(r => r['{FIELD_MOV_TYPE}'].startsWith('{MOV_TYPE_FII_INCOME}') && parseDate(r['{FIELD_MOV_DATE}'])?.getFullYear() === DECLARATION_YEAR)
+const expectedTotalDividends = (movementsData as any[])
+    .filter(r => r['{FIELD_MOV_TYPE}']?.startsWith('{MOV_TYPE_FII_INCOME}') && parseDate(r['{FIELD_MOV_DATE}'])?.getFullYear() === DECLARATION_YEAR)
     .reduce((sum, r) => sum + parseFloatSafe(r['{FIELD_MOV_TOTAL_COST}']), 0);
 
 
@@ -1358,7 +1367,6 @@ describe('{ticker} Asset Calculation and DBK Generation', () => {{
        // expect(dividendItems?.length).toBeGreaterThanOrEqual(1); // Might be grouped by CNPJ
        // expect(totalDividends).toBeCloseTo(expectedDividends, 2);
         
-        console.log('totalDividends', totalDividends);
         console.log('expectedTotalDividends', expectedTotalDividends);
         expect(assetItem).toBeDefined();
         expect(assetItem?.value).toBeCloseTo(expectedTotalIsentos, 2);
