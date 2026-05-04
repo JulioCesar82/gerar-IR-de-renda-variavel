@@ -1,13 +1,13 @@
 {
   "files": {
-    "main.css": "/gerar-IR-de-renda-variavel/static/css/main.eaa1b8ac.css",
-    "main.js": "/gerar-IR-de-renda-variavel/static/js/main.957cf6d0.js",
+    "main.css": "/gerar-IR-de-renda-variavel/static/css/main.c8030bfb.css",
+    "main.js": "/gerar-IR-de-renda-variavel/static/js/main.338ec2dd.js",
     "index.html": "/gerar-IR-de-renda-variavel/index.html",
-    "main.eaa1b8ac.css.map": "/gerar-IR-de-renda-variavel/static/css/main.eaa1b8ac.css.map",
-    "main.957cf6d0.js.map": "/gerar-IR-de-renda-variavel/static/js/main.957cf6d0.js.map"
+    "main.c8030bfb.css.map": "/gerar-IR-de-renda-variavel/static/css/main.c8030bfb.css.map",
+    "main.338ec2dd.js.map": "/gerar-IR-de-renda-variavel/static/js/main.338ec2dd.js.map"
   },
   "entrypoints": [
-    "static/css/main.eaa1b8ac.css",
-    "static/js/main.957cf6d0.js"
+    "static/css/main.c8030bfb.css",
+    "static/js/main.338ec2dd.js"
   ]
 }
