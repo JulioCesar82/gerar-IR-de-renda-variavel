@@ -21,6 +21,16 @@ export interface SpecialEvent {
    * The type of event
    */
   type: SpecialEventType;
+
+  /**
+   * The original type string from the source file
+   */
+  originalType?: string;
+
+  /**
+   * The operation type (Credit or Debit)
+   */
+  operationType?: 'Credito' | 'Debito';
   
   /**
    * The asset code (ticker)

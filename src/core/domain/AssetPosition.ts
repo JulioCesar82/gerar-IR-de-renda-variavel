@@ -106,6 +106,13 @@ export interface AssetPosition {
    * Pode ser necessário buscar essa informação externamente ou adicioná-la durante o processamento.
    */
   cnpj?: string;
+
+  /**
+   * Quantidade base utilizada exclusivamente para cálculo histórico do preço médio, 
+   * separada de eventos sem custo (como bonificações).
+   */
+  baseQuantity?: number;
+
   /**
    * Valor total do ativo em 31/12 do ano anterior.
    * Precisa ser calculado ou obtido das posições iniciais.
@@ -124,22 +131,27 @@ export interface TransactionHistory {
   date: Date;
 
   /**
-   * The type of transaction (buy or sell)
+   * The type of transaction (buy, sell, split, bonus, etc.)
    */
-  type: 'buy' | 'sell';
+  type: 'buy' | 'sell' | 'event' | string;
 
   /**
-   * The quantity of assets
+   * A descriptive name for the entry
+   */
+  description?: string;
+
+  /**
+   * The quantity of assets changed in this entry
    */
   quantity: number;
 
   /**
-   * The unit price
+   * The unit price used in this entry
    */
   unitPrice: number;
 
   /**
-   * The total value
+   * The total value of the entry
    */
   totalValue: number;
 
@@ -157,6 +169,21 @@ export interface TransactionHistory {
    * The net value
    */
   netValue: number;
+
+  /**
+   * The quantity of assets after this entry
+   */
+  resultingQuantity?: number;
+
+  /**
+   * The average price of the asset after this entry
+   */
+  resultingAveragePrice?: number;
+
+  /**
+   * The total cost of the position after this entry
+   */
+  resultingTotalCost?: number;
 }
 
 /**

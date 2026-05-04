@@ -1,6 +1,6 @@
 import { AssetProcessorPort } from '../../core/interfaces/AssetProcessorPort';
 import { ExternalEventInfoProviderPort } from '../../core/interfaces/ExternalEventInfoProviderPort';
-import { Transaction, AssetCategory /*, MarketType */ } from '../../core/domain/Transaction';
+import { Transaction, AssetCategory, MarketType } from '../../core/domain/Transaction';
 import { SpecialEvent, SpecialEventType } from '../../core/domain/SpecialEvent';
 import {
   AssetPosition,
@@ -29,39 +29,39 @@ type TimelineItem =
 export class AssetProcessor implements AssetProcessorPort {
   constructor(private externalEventInfoProvider: ExternalEventInfoProviderPort) {}
 
-  // Helper function to map event types consistently
   private mapEventType(eventType: SpecialEventType | string): SpecialEventType | string {
     if (typeof eventType === 'string') {
-      switch (eventType) {
-        case 'Bonificação em Ativos':
-        case 'Bonificação em ações':
-          return SpecialEventType.STOCK_DIVIDEND;
-        case 'Desdobramento':
-        case 'Desdobro':
-          return SpecialEventType.STOCK_SPLIT;
-        case 'Grupamento':
-          return SpecialEventType.REVERSE_SPLIT;
-        // case 'Direito de Subscrição - Exercido': // Ignorando esses eventos porque a B3 já adionou esse evento como "Compra"
-        // case 'Direitos de Subscrição - Exercido': // Ignorando esses eventos porque a B3 já adionou esse evento como "Compra"
-        // case 'Cessão de Direitos - Solicitada': // Ignorando esses eventos porque a B3 já adionou esse evento como "Compra"
-        //   return SpecialEventType.SUBSCRIPTION; // Ignorando esses eventos porque a B3 já adionou esse evento como "Compra"
-        case 'Atualização':
-        case 'Fração em Ativos':
-        // case 'Direito de Subscrição': // Me parece estar no lugar errado...
-        // case 'Cessão de Direitos - Solicitada': // Me parece estar no lugar errado...
-          return SpecialEventType.OTHER;
+      const normalized = eventType.trim();
+      // Resiliente a codificações UTF-8 (çã)
+      if (normalized === 'Bonificação em Ativos' || normalized === 'Bonificação em ações' || normalized.includes('Bonifica')) {
+        return SpecialEventType.STOCK_DIVIDEND;
+      }
+      if (normalized === 'Desdobramento' || normalized === 'Desdobro') {
+        return SpecialEventType.STOCK_SPLIT;
+      }
+      if (normalized === 'Grupamento') {
+        return SpecialEventType.REVERSE_SPLIT;
+      }
+      if (normalized === 'Fração em Ativos' || normalized.includes('Fra')) {
+        return SpecialEventType.OTHER; // Tratado no case OTHER com o originalStringType
+      }
+      if (normalized === 'Atualização') {
+        return SpecialEventType.OTHER;
+      }
+      // ... rest of mappings
+      switch (normalized) {
         case 'Dividendos':
           return SpecialEventType.DIVIDEND;
         case 'Juros sobre Capital Próprio':
+        case 'Juros Sobre Capital Próprio':
           return SpecialEventType.JCP;
         case 'Rendimento':
           return SpecialEventType.INCOME;
-        // Keep other strings as strings if not mapped
         default:
-          return eventType;
+          return normalized;
       }
     }
-    return eventType; // Return enum if it was already an enum
+    return eventType;
   }
 
   // --- Helper method to map event types ---
@@ -114,14 +114,51 @@ export class AssetProcessor implements AssetProcessorPort {
 
     // Map event types consistently upfront
     const mappedSpecialEvents: MappedSpecialEvent[] = specialEvents.map(e => {
-      const originalStringType = typeof e.type === 'string' ? e.type : undefined;
-      const mappedType = this.mapEventType(e.type);
+      // Prioritize using originalType if provided by the parser
+      const originalStringType = e.originalType || (typeof e.type === 'string' ? e.type : undefined);
+      const mappedType = this.mapEventType(e.type || originalStringType);
       return {
         ...e,
         type: mappedType,
         _originalStringType: originalStringType,
       } as MappedSpecialEvent;
     });
+
+    // --- Inject missing events from external provider ---
+    // Identify all unique assets in the transactions
+    const uniqueAssets = new Set<string>();
+    transactions.forEach(t => uniqueAssets.add(getAssetKey(t.assetCode)));
+
+    console.log(`AssetProcessor: Checking for missing events for ${uniqueAssets.size} unique assets`);
+
+    for (const assetCode of uniqueAssets) {
+      // Fetch known events for this asset from the provider
+      const externalEvents = await this.externalEventInfoProvider.getEventsForAsset(assetCode);
+
+      for (const extEvent of externalEvents) {
+        const mappedExtType = this.mapEventType(extEvent.type);
+
+        // Check if this event already exists in the B3 data
+        // Use a window of ±5 days to avoid duplicates if dates are slightly different
+        const alreadyExists = mappedSpecialEvents.some(
+          e =>
+            getAssetKey(e.assetCode) === assetCode &&
+            e.type === mappedExtType &&
+            Math.abs(e.date.getTime() - extEvent.date.getTime()) <= 5 * 24 * 60 * 60 * 1000
+        );
+
+        if (!alreadyExists) {
+          console.log(
+            `AssetProcessor: Injecting missing ${extEvent.type} for ${assetCode} on ${extEvent.date.toLocaleDateString()}`
+          );
+          mappedSpecialEvents.push({
+            ...extEvent,
+            type: mappedExtType,
+            _originalStringType: typeof extEvent.type === 'string' ? extEvent.type : undefined
+          } as MappedSpecialEvent);
+        }
+      }
+    }
 
     let filteredTransactions = transactions;
     let filteredMappedSpecialEvents = mappedSpecialEvents;
@@ -378,6 +415,7 @@ export class AssetProcessor implements AssetProcessorPort {
         assetCategory: transaction.assetCategory,
         marketType: transaction.marketType,
         quantity: 0,
+        baseQuantity: 0, // Memória base para o PM
         averagePrice: 0,
         totalCost: 0,
         acquisitionDate: transaction.date,
@@ -391,34 +429,20 @@ export class AssetProcessor implements AssetProcessorPort {
       positionsMap.set(key, position);
     }
 
-    // Ensure transactionsHistory exists before pushing
-    if (!position.transactionsHistory) {
-      position.transactionsHistory = [];
-    }
-
-    position.transactionsHistory.push({
-      date: transaction.date,
-      type: transaction.type,
-      quantity: transaction.quantity,
-      unitPrice: transaction.unitPrice,
-      totalValue: transaction.totalValue,
-      fees: transaction.fees,
-      taxes: transaction.taxes,
-      netValue: transaction.netValue
-    });
-
     if (transaction.type === 'buy') {
       // Add debug log before processing buy transaction
       console.log(`[DEBUG] Before buy: ${position.assetCode}, Qtd=${position.quantity.toFixed(4)}, TotalCost=${position.totalCost.toFixed(4)}, AvgPrice=${position.averagePrice.toFixed(4)}, BuyQtd=${transaction.quantity}, Date=${transaction.date.toLocaleDateString()}`);
 
       const newQuantity = position.quantity + transaction.quantity;
+      const newBaseQuantity = (position.baseQuantity || 0) + transaction.quantity;
       // Calculate cost based on quantity * unit price, ignoring fees/taxes as per test mapping
       const costOfBuy = transaction.quantity * transaction.unitPrice;
       const newTotalCost = position.totalCost + costOfBuy;
 
       position.quantity = newQuantity;
+      position.baseQuantity = newBaseQuantity;
       position.totalCost = newTotalCost;
-      position.averagePrice = newQuantity > 0 ? newTotalCost / newQuantity : 0;
+      position.averagePrice = newBaseQuantity > 0 ? newTotalCost / newBaseQuantity : 0;
 
       if (position.quantity === transaction.quantity) {
         position.acquisitionDate = transaction.date;
@@ -442,13 +466,18 @@ export class AssetProcessor implements AssetProcessorPort {
       } else {
         // Sufficient quantity available, proceed as before
         position.quantity -= transaction.quantity;
+        const currentBaseQty = position.baseQuantity || 0;
+        position.baseQuantity = currentBaseQty - transaction.quantity;
+
         if (position.quantity > 0.0001) {
           // Use tolerance for floating point
-          // Recalculate total cost based on remaining quantity and original average price
-          position.totalCost = position.averagePrice * position.quantity;
+          // Subtrair o custo baseado na quantidade vendida usando o PM da base
+          position.totalCost -= (position.averagePrice * transaction.quantity);
+          if (position.totalCost < 0) position.totalCost = 0; // Prevent negative
         } else {
           // If quantity becomes zero or negligible after selling
           position.quantity = 0; // Ensure it's exactly zero
+          position.baseQuantity = 0;
           position.totalCost = 0;
           position.averagePrice = 0;
         }
@@ -458,52 +487,130 @@ export class AssetProcessor implements AssetProcessorPort {
       console.log(`[DEBUG] After sell: ${position.assetCode}, Qtd=${position.quantity.toFixed(4)}, TotalCost=${position.totalCost.toFixed(4)}, AvgPrice=${position.averagePrice.toFixed(4)}, Date=${transaction.date.toLocaleDateString()}`);
     }
 
+    // Update history with resulting state
+    const historyEntry = {
+      date: transaction.date,
+      type: transaction.type,
+      description: transaction.type === 'buy' ? 'Compra' : 'Venda',
+      quantity: transaction.quantity,
+      unitPrice: transaction.unitPrice,
+      totalValue: transaction.totalValue,
+      fees: transaction.fees,
+      taxes: transaction.taxes,
+      netValue: transaction.netValue,
+      resultingQuantity: position.quantity,
+      resultingAveragePrice: position.averagePrice,
+      resultingTotalCost: position.totalCost
+    };
+
+    position.transactionsHistory.push(historyEntry);
+
     console.log(`[DEBUG - processTransaction] After processing: ${position.assetCode}, Qtd=${position.quantity.toFixed(4)}, TotalCost=${position.totalCost.toFixed(4)}, AvgPrice=${position.averagePrice.toFixed(4)}, Date=${transaction.date.toLocaleDateString()}`);
     position.lastUpdateDate = transaction.date;
   }
 
-  /**
-   * Process a special event
-   */
   private async processSpecialEvent(
     // Use the mapped event type which includes _originalStringType
     event: MappedSpecialEvent & { _timelineType: 'event' }, // Use MappedSpecialEvent here
     positionsMap: Map<string, AssetPosition>
   ): Promise<void> {
     const key = getAssetKey(event.assetCode);
-    const position = positionsMap.get(key);
+    let position = positionsMap.get(key);
+    
     if (!position) {
-      console.warn(`Special event received for non-existing position: ${event.assetCode} on ${event.date.toLocaleDateString()}`);
-      return;
+      // Create position if it's a quantity-increasing event (like Rename/Atualização)
+      // to allow tracking quantity even if history starts with an event
+      const originalStringType = event._originalStringType;
+      const eventTypeForSwitch = event.type;
+      
+      const isQuantityIncreasing = 
+        eventTypeForSwitch === SpecialEventType.STOCK_DIVIDEND ||
+        eventTypeForSwitch === SpecialEventType.STOCK_SPLIT ||
+        (eventTypeForSwitch === SpecialEventType.OTHER && 
+          (originalStringType === 'Atualização' || originalStringType === 'Direito de Subscrição'));
+
+      if (isQuantityIncreasing) {
+        // console.log(`[AssetProcessor] Creating virtual position for ${event.assetCode} (key: ${key}) due to ${originalStringType || event.type} event on ${event.date.toLocaleDateString()}`);
+        position = {
+          assetCode: event.assetCode,
+          assetName: event.assetName,
+          assetCategory: event.assetCategory as AssetCategory,
+          marketType: MarketType.SPOT, // Default
+          quantity: 0,
+          baseQuantity: 0,
+          averagePrice: 0,
+          totalCost: 0,
+          acquisitionDate: event.date,
+          lastUpdateDate: event.date,
+          brokerName: event.brokerName,
+          brokerCode: event.brokerCode,
+          transactionsHistory: [],
+          cnpj: undefined
+        };
+        positionsMap.set(key, position);
+      } else {
+        console.warn(`Special event received for non-existing position: '${event.assetCode}' (key: '${key}') on ${event.date.toLocaleDateString()}. Map keys: [${Array.from(positionsMap.keys()).join(', ')}]`);
+        return;
+      }
     }
+
+    // After this point, if position was undefined it either was created or we returned.
+    // However, TypeScript doesn't track this across awaits, so we'll use a local var
+    // or re-check after each await. Using a re-check for simplicity and clarity.
+    if (!position) return;
 
     // Use the mapped type and original string from the event object
     const eventTypeForSwitch = event.type;
     const originalStringType = event._originalStringType;
 
     // Lógica de atualização da posição baseada no evento
+    let eventDescription = originalStringType || (typeof eventTypeForSwitch === 'string' ? eventTypeForSwitch : 'Evento Especial');
+    let eventApplied = false;
+
     switch (
       eventTypeForSwitch // Switch on the mapped type (can be enum or string)
     ) {
-      case SpecialEventType.STOCK_DIVIDEND: // Corrected: Removed redundant 'Bonificação em Ativos' case
-        // Handles both enum and mapped 'Bonificação em Ativos'
-        console.info(`Applying Stock Dividend/Bonificação: Qtd before=${position.quantity.toFixed(4)}, Qtd added=${event.quantity}, Date=${event.date.toLocaleDateString('pt-BR')}`);
-
-        position.quantity += event.quantity;
-        // Recalculate average price if quantity changes
-        if (position.quantity > 0.0001) {
-          // Use tolerance
-          position.averagePrice = position.totalCost / position.quantity;
-        } else {
-          position.averagePrice = 0;
-          position.totalCost = 0; // Ensure cost is zero if quantity is zero
+      case SpecialEventType.STOCK_DIVIDEND: {
+        let factor = event.factor;
+        if (!factor || factor <= 1) {
+          if (!event.quantity) {
+            const staticFactor = await this.externalEventInfoProvider.getEventFactor(
+              event.assetCode,
+              SpecialEventType.STOCK_DIVIDEND,
+              event.date
+            );
+            if (staticFactor) factor = staticFactor;
+          }
         }
-        console.info(` -> Qtd after=${position.quantity.toFixed(4)}, New Avg Price=${position.averagePrice.toFixed(4)}`);
 
+        if (!position) return; // Re-check after await
+        const oldQuantity = position.quantity;
+
+        if (factor && factor > 1) {
+          position.quantity *= factor;
+          eventApplied = true;
+          eventDescription = `Bonificação (Fator ${factor})`;
+        } else if (event.quantity && event.quantity > 0) {
+          position.quantity += event.quantity;
+          eventApplied = true;
+          eventDescription = 'Bonificação';
+        }
+
+        if (eventApplied) {
+          const addedQuantity = position.quantity - oldQuantity;
+          // BONIFICAÇÃO NÃO ALTERA CUSTO TOTAL NEM PREÇO MÉDIO
+          // Apenas aumenta a quantidade. O Preço Médio "Real" (de aquisição)
+          // permanece o mesmo sobre a base que gerou custo.
+          console.info(
+            `[APP-BONUS] ${position.assetCode} +${addedQuantity.toFixed(4)} shares. PM and TotalCost remained stable.`
+          );
+        }
         break;
+      }
+
       case SpecialEventType.STOCK_SPLIT: {
         // Add debug log before processing stock split
-        console.log(`[DEBUG] Before stock split: ${position.assetCode}, Qtd=${position.quantity.toFixed(4)}, TotalCost=${position.totalCost.toFixed(4)}, AvgPrice=${position.averagePrice.toFixed(4)}, Factor=${event.factor}, Date=${event.date.toLocaleDateString()}`);
+        // console.log(`[DEBUG] Before stock split: ${position.assetCode}, Qtd=${position.quantity.toFixed(4)}, TotalCost=${position.totalCost.toFixed(4)}, AvgPrice=${position.averagePrice.toFixed(4)}, Factor=${event.factor}, Date=${event.date.toLocaleDateString()}`);
 
         if (position.quantity === 0) {
           // Avoid division by zero if split happens before buy
@@ -516,7 +623,6 @@ export class AssetProcessor implements AssetProcessorPort {
         // Also check if event.factor is a number
         let factor = event.factor;
         if (!factor) {
-          // Pass the mapped type (which is STOCK_SPLIT here)
           const staticFactor = await this.externalEventInfoProvider.getEventFactor(
             event.assetCode,
             SpecialEventType.STOCK_SPLIT,
@@ -525,70 +631,69 @@ export class AssetProcessor implements AssetProcessorPort {
           if (staticFactor) factor = staticFactor;
         }
 
+        if (!position) return; // Re-check after await
+
         if (factor && typeof factor === 'number' && factor > 1) {
           console.info(`Applying Stock Split: Qtd before=${position.quantity.toFixed(4)}, Factor=${factor}, Date=${event.date.toLocaleDateString('pt-BR')}`);
 
           position.quantity *= factor;
-          // Recalculate average price: total cost remains the same, quantity increases
-          if (position.quantity > 0) {
-            position.averagePrice = position.totalCost / position.quantity;
+          position.baseQuantity = (position.baseQuantity || 0) * factor; // Dilute base
+          // Recalculate average price: total cost remains the same, base quantity increases
+          if (position.baseQuantity > 0) {
+            position.averagePrice = position.totalCost / position.baseQuantity;
           } else {
             position.averagePrice = 0; // Avoid division by zero if quantity becomes zero unexpectedly
           }
           console.info(` -> Qtd after=${position.quantity.toFixed(4)}, New Avg Price=${position.averagePrice.toFixed(4)}`);
-
+          eventApplied = true;
+          eventDescription = `Desdobramento (1:${factor})`;
         } else {
           // Fator é OBRIGATÓRIO para Desdobramento/Grupamento
           console.warn(`Stock split event for ${position.assetCode} is missing a valid factor > 1:`, event);
-
         }
-
-        // Add debug log after processing stock split
-        console.log(`[DEBUG] After stock split: ${position.assetCode}, Qtd=${position.quantity.toFixed(4)}, TotalCost=${position.totalCost.toFixed(4)}, AvgPrice=${position.averagePrice.toFixed(4)}, Date=${event.date.toLocaleDateString()}`);
-
         break;
       }
+
       case SpecialEventType.REVERSE_SPLIT: {
         if (position.quantity === 0) {
-          // Avoid issues if reverse split happens before buy
           console.warn(`Reverse split event for ${position.assetCode} but quantity is zero.`);
           break;
         }
 
         // Ensure event.factor exists and is greater than 1 for a reverse split
         // Also check if event.factor is a number
-        const factor = event.factor;
-        let updatedFactor = factor;
-        if (!updatedFactor) {
+        let factor = event.factor;
+        if (!factor) {
           // Pass the mapped type (which is REVERSE_SPLIT here)
           const staticFactor = await this.externalEventInfoProvider.getEventFactor(
             event.assetCode,
-            event.type,
+            SpecialEventType.REVERSE_SPLIT,
             event.date
           );
-
-          if (staticFactor) 
-            updatedFactor = staticFactor;
+          if (staticFactor) factor = staticFactor;
         }
 
-        if (updatedFactor && typeof updatedFactor === 'number' && updatedFactor > 1) {
-          console.info(`Applying Reverse Split: Qtd before=${position.quantity.toFixed(4)}, Factor=${updatedFactor}, Date=${event.date.toLocaleDateString('pt-BR')}`);
+        if (!position) return; // Re-check after await
 
-          position.quantity /= updatedFactor; // Divide quantity by the factor
-          // Recalculate average price: total cost remains the same, quantity decreases
-          if (position.quantity > 0) {
-            position.averagePrice = position.totalCost / position.quantity;
+        if (factor && typeof factor === 'number' && factor > 1) {
+          console.info(`Applying Reverse Split: Qtd before=${position.quantity.toFixed(4)}, Factor=${factor}, Date=${event.date.toLocaleDateString('pt-BR')}`);
+
+          position.quantity /= factor;
+          position.baseQuantity = (position.baseQuantity || 0) / factor; // Aggregate base
+          // Recalculate average price: total cost remains the same, base quantity decreases
+          if (position.baseQuantity > 0) {
+            position.averagePrice = position.totalCost / position.baseQuantity;
           } else {
-            position.averagePrice = 0; // Avoid division by zero if quantity becomes zero unexpectedly
+            position.averagePrice = 0;
           }
           // Consider rounding quantity after division if needed
           // position.quantity = Math.round(position.quantity * 10000) / 10000;
           console.info(` -> Qtd after=${position.quantity.toFixed(4)}, New Avg Price=${position.averagePrice.toFixed(4)}`);
-
+          eventApplied = true;
+          eventDescription = `Grupamento (${factor}:1)`;
         } else {
           // Fator é OBRIGATÓRIO para Desdobramento/Grupamento
           console.warn(`Reverse split event for ${position.assetCode} is missing a valid factor > 1:`, event);
-
         }
         break;
       }
@@ -610,12 +715,8 @@ export class AssetProcessor implements AssetProcessorPort {
       //   break;
 
       case SpecialEventType.OTHER: {
-        if (
-          originalStringType === 'Atualização'
-          // || originalStringType === 'Direito de Subscrição' // Ignorando esses eventos porque a B3 já adionou esse evento como "Compra"
-        ) {
+        if (originalStringType === 'Atualização' || originalStringType === 'Direito de Subscrição') {
           // These events increase quantity. Cost adjustment depends on the retrieved price.
-          let averagePrice = 0; // Default to 0 if not found or provider doesn't support it
           // Get the average price from the external provider
           const price = await this.externalEventInfoProvider.getSpecialEventAveragePrice(
             event.assetCode,
@@ -623,34 +724,41 @@ export class AssetProcessor implements AssetProcessorPort {
             event.date
           );
 
-          if (price !== null) averagePrice = price;
-          else console.warn(`[${position.assetCode}] Average price for event '${originalStringType}' on ${event.date.toLocaleDateString()} not found in static data. Assuming price 0.`);
+          if (!position) return; // Re-check after await
 
-          const addedQuantity = event.quantity;
-          position.quantity += addedQuantity;
+          if (price !== null) {
+            const averagePrice = price;
+            const addedQuantity = event.quantity;
 
-          if (averagePrice > 0) {
-            const addedCost = addedQuantity * averagePrice;
-            position.totalCost += addedCost;
-            console.info(`Applying ${originalStringType} (Price > 0): Qtd added=${addedQuantity.toFixed(4)}, Price=${averagePrice.toFixed(4)}, Cost added=${addedCost.toFixed(4)}, Date=${event.date.toLocaleDateString('pt-BR')}`);
+            if (averagePrice > 0) {
+              position.quantity += addedQuantity;
+              position.baseQuantity = (position.baseQuantity || 0) + addedQuantity; // Aumenta base
+              const addedCost = addedQuantity * averagePrice;
+              position.totalCost += addedCost;
+              console.info(`Applying ${originalStringType} (Price > 0): Qtd added=${addedQuantity.toFixed(4)}, Price=${averagePrice.toFixed(4)}, Cost added=${addedCost.toFixed(4)}, Date=${event.date.toLocaleDateString('pt-BR')}`);
 
+            } else {
+                  // Price is 0, treat like Bonificação (no cost change)
+              // NO baseQuantity change
+              position.quantity += addedQuantity;
+              position.baseQuantity = (position.baseQuantity || 0) + addedQuantity; 
+              console.info(`Applying ${originalStringType} (Price = 0): Qtd added=${addedQuantity.toFixed(4)}, Quantity and Base Qtd increased, No cost change (preserving existing cost), Date=${event.date.toLocaleDateString('pt-BR')}`);
+            }
+
+            // Recalculate average price using baseQuantity
+            if (position.baseQuantity && position.baseQuantity > 0.0001)
+              position.averagePrice = position.totalCost / position.baseQuantity;
+            else {
+              position.averagePrice = 0;
+              position.totalCost = 0;
+            }
+            console.info(` -> Qtd after=${position.quantity.toFixed(4)}, New Total Cost=${position.totalCost.toFixed(4)}, New Avg Price=${position.averagePrice.toFixed(4)}`);
+            eventApplied = true;
+            eventDescription = originalStringType;
           } else {
-            // Price is 0, treat like Bonificação (no cost change)
-            console.info(`Applying ${originalStringType} (Price = 0): Qtd added=${addedQuantity.toFixed(4)}, No cost change, Date=${event.date.toLocaleDateString('pt-BR')}`);
-
+            console.log(`[${position.assetCode}] Ignoring '${originalStringType}' event as no static price was found (likely a redundant position report) on ${event.date.toLocaleDateString()}`);
           }
-
-          // Recalculate average price
-          if (position.quantity > 0.0001)
-            position.averagePrice = position.totalCost / position.quantity;
-          else {
-            position.averagePrice = 0;
-            position.totalCost = 0;
-          }
-          console.info(` -> Qtd after=${position.quantity.toFixed(4)}, New Total Cost=${position.totalCost.toFixed(4)}, New Avg Price=${position.averagePrice.toFixed(4)}`);
-
-        } 
-        // else if (originalStringType === 'Cessão de Direitos - Solicitada') { // Ignorando esses eventos porque a B3 já adionou esse evento como "Compra"
+      // else if (originalStringType === 'Cessão de Direitos - Solicitada') { // Ignorando esses eventos porque a B3 já adionou esse evento como "Compra"
         //   // This event decreases quantity and removes cost based on the retrieved price.
         //   let averagePrice = 0; // Default to 0 if not found or provider doesn't support it
         //   // Get the average price from the external provider
@@ -701,71 +809,71 @@ export class AssetProcessor implements AssetProcessorPort {
         //   }
         //   console.info(` -> Qtd after=${position.quantity.toFixed(4)}, New Total Cost=${position.totalCost.toFixed(4)}, New Avg Price=${position.averagePrice.toFixed(4)}`);
 
-        // }
-        else if (originalStringType === 'Fração em Ativos') {
-          // <<<--- Logic for Fraction Event
-          console.info(`Applying Fração em Ativos: Qtd before=${position.quantity.toFixed(4)}, Qtd removed=${event.quantity}, Date=${event.date.toLocaleDateString('pt-BR')}`);
-
-          const averagePriceBeforeEvent = position.averagePrice;
-          const quantityToRemove = event.quantity;
-          if (quantityToRemove <= 0) {
-            console.warn(`[${position.assetCode}] 'Fração em Ativos' event with invalid quantity ${quantityToRemove} on ${event.date.toLocaleDateString()}. Skipping.`);
-
-          } else if (position.quantity >= quantityToRemove - 0.0001) {
-            const costToRemove = quantityToRemove * averagePriceBeforeEvent;
-            position.totalCost -= costToRemove;
+        } else if (originalStringType === 'Fração em Ativos') {
+          const quantityToRemove = Math.abs(event.quantity);
+          if (quantityToRemove > 0 && position.quantity >= quantityToRemove - 0.0001) {
+            const priceBefore = position.averagePrice;
+            // MANTER PREÇO MÉDIO ESTÁVEL: Remove custo proporcional
+            position.totalCost -= quantityToRemove * priceBefore;
+            if (position.totalCost < 0) position.totalCost = 0; 
             position.quantity -= quantityToRemove;
+            position.baseQuantity = (position.baseQuantity || 0) - quantityToRemove;
+
             if (position.quantity < 0.0001) {
               position.quantity = 0;
+              position.baseQuantity = 0;
               position.totalCost = 0;
+              position.averagePrice = 0;
+            } else {
+              if (position.baseQuantity && position.baseQuantity > 0.0001) {
+                  position.averagePrice = position.totalCost / position.baseQuantity;
+              } else {
+                  position.averagePrice = 0;
+                  position.totalCost = 0;
+              }
             }
-            if (position.totalCost < 0) {
-              console.warn(`[${position.assetCode}] Total cost went negative (${position.totalCost.toFixed(4)}) after 'Fração em Ativos'. Setting cost to 0.`);
-
-              position.totalCost = 0;
-            }
-            position.averagePrice =
-              position.quantity > 0.0001 ? position.totalCost / position.quantity : 0;
             
-              console.info(` -> Qtd after=${position.quantity.toFixed(4)}, Cost removed=${costToRemove.toFixed(4)}, New Total Cost=${position.totalCost.toFixed(4)}, New Avg Price=${position.averagePrice.toFixed(4)}`);
-
+            console.info(`[APP-FRACTION] ${position.assetCode} -${quantityToRemove.toFixed(4)} shares. Removed cost based on PM R$ ${priceBefore.toFixed(4)}`);
+            eventApplied = true;
+            eventDescription = 'Venda de Fração';
           } else {
             console.warn(`[${position.assetCode}] Attempt to remove fraction ${quantityToRemove} on ${event.date.toLocaleDateString()} when only ${position.quantity.toFixed(4)} available. Zeroing position.`);
-
             position.quantity = 0;
+            position.baseQuantity = 0;
             position.totalCost = 0;
             position.averagePrice = 0;
+            eventApplied = true;
+            eventDescription = 'Venda de Fração (Zerar)';
           }
         } else {
           // Log for other strings mapped to OTHER
           console.log(`[${position.assetCode}] Skipping unhandled original special event string type mapped to OTHER: ${originalStringType} on ${event.date.toLocaleDateString()}`);
-
         }
         break;
       }
-      // Events like DIVIDEND, JCP, INCOME don't affect position cost/avg price here
-      case SpecialEventType.DIVIDEND:
-      case SpecialEventType.JCP:
-      case SpecialEventType.INCOME:
-        // No action needed here, handled by extractIncomeRecords
-        break;
+
       default:
-        // Handle unmapped strings or unexpected enum values
-        if (typeof eventTypeForSwitch === 'string') {
-          console.log(`[${position.assetCode}] Skipping unhandled special event string type: ${eventTypeForSwitch} on ${event.date.toLocaleDateString()}`);
-
-        } else {
-          // This case should ideally not be reached if mapping is comprehensive
-          // Safely access enum name
-          const enumName = Object.keys(SpecialEventType).find(
-            key => SpecialEventType[key as keyof typeof SpecialEventType] === eventTypeForSwitch
-          );
-          console.log(`[${position.assetCode}] Skipping unhandled special event enum type: ${enumName || eventTypeForSwitch} on ${event.date.toLocaleDateString()}`);
-
-        }
+        // Already handled or ignored
         break;
     }
-    console.log(`[DEBUG - processSpecialEvent] After processing: ${position.assetCode}, Qtd=${position.quantity.toFixed(4)}, TotalCost=${position.totalCost.toFixed(4)}, AvgPrice=${position.averagePrice.toFixed(4)}, Date=${event.date.toLocaleDateString()}, EventType=${event.type}, OriginalStringType=${event._originalStringType}`);
+
+    if (eventApplied) {
+      position.transactionsHistory.push({
+        date: event.date,
+        type: 'event',
+        description: eventDescription,
+        quantity: event.quantity,
+        unitPrice: event.unitPrice || 0,
+        totalValue: event.totalValue || 0,
+        fees: event.fees || 0,
+        taxes: event.taxes || 0,
+        netValue: event.netValue || 0,
+        resultingQuantity: position.quantity,
+        resultingAveragePrice: position.averagePrice,
+        resultingTotalCost: position.totalCost
+      });
+    }
+
     position.lastUpdateDate = event.date;
   }
 
@@ -809,8 +917,8 @@ export class AssetProcessor implements AssetProcessorPort {
           if (tx.type === 'buy') {
             // Use netValue for cost basis in FIFO queue
             buyQueue.push({ quantity: tx.quantity, netValue: tx.netValue, date: tx.date });
-          } else {
-            // Sell transaction
+          } else if (tx.type === 'sell' || (tx.type === 'event' && tx.quantity > 0)) {
+            // Only process sales or events with quantity > 0 (e.g., fraction sales)
             // Only process sales within the selected year for results
             if (selectedYear && tx.date && tx.date.getFullYear() !== selectedYear) {
               continue; // Skip sales outside the target year
@@ -1319,10 +1427,7 @@ export class AssetProcessor implements AssetProcessorPort {
         // mappedEventType === SpecialEventType.SUBSCRIPTION || // Ignorando esses eventos porque a B3 já adionou esse evento como "Compra"
         // Check original string type for events mapped to OTHER 
         (mappedEventType === SpecialEventType.OTHER &&
-          (originalStringType === 'Atualização' ||
-            // originalStringType === 'Direito de Subscrição' || // Ignorando esses eventos porque a B3 já adionou esse evento como "Compra"
-            // originalStringType === 'Cessão de Direitos - Solicitada' || // Ignorando esses eventos porque a B3 já adionou esse evento como "Compra"
-            originalStringType === 'Fração em Ativos')); // Include fraction here too
+          (originalStringType === 'Fração em Ativos')); // Removed 'Atualização' from here
 
       if (isRelevantEvent) {
         // Push the mapped event 'e' which includes _originalStringType and add type marker
@@ -1396,15 +1501,7 @@ export class AssetProcessor implements AssetProcessorPort {
             }
           } else if (mappedEventType === SpecialEventType.OTHER) {
             // Check original string type
-            if (
-              originalStringType === 'Atualização' 
-              // || originalStringType === 'Direito de Subscrição' // Ignorando esses eventos porque a B3 já adionou esse evento como "Compra"
-            ) {
-              quantity += item.quantity;
-            } else if (
-              // originalStringType === 'Cessão de Direitos - Solicitada' || // Ignorando esses eventos porque a B3 já adionou esse evento como "Compra"
-              originalStringType === 'Fração em Ativos'
-            ) {
+            if (originalStringType === 'Fração em Ativos') {
               quantity -= item.quantity;
             }
           }

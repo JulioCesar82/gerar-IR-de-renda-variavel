@@ -7,6 +7,14 @@ export interface EventInfo {
 
 export interface ExternalEventInfoProviderPort {
   /**
+   * Get all special events for a specific asset (ticker)
+   * @param ticker The asset ticker
+   * @param year The year of the event
+   * @returns An array of special events or an empty array if none found
+   */
+  getEventsForAsset(ticker: string, year?: number): Promise<any[]>;
+
+  /**
    * Get the factor for a stock split or reverse split event
    * @param ticker The asset ticker
    * @param eventType The event type

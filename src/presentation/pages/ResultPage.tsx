@@ -11,14 +11,195 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Divider
+  Divider,
+  Collapse,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Link
 } from '@mui/material';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import CloseIcon from '@mui/icons-material/Close';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 
 import { useAppContext } from '../context/AppContext';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { Container } from '../../infrastructure/di/Container';
 import { tryDownloadFile } from 'src/utils/presentation';
+import { AssetPosition } from 'src/core/domain/AssetPosition';
+
+/**
+ * Dialog to show asset calculation details
+ */
+const AssetDetailsDialog: React.FC<{ 
+  asset: AssetPosition | null, 
+  open: boolean, 
+  onClose: () => void 
+}> = ({ asset, open, onClose }) => {
+  if (!asset) return null;
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+      <DialogTitle sx={{ m: 0, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h6">
+          Detalhamento de Cálculo: {asset.assetCode} - {asset.assetName}
+        </Typography>
+        <IconButton aria-label="close" onClick={onClose}>
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent dividers>
+        <TableContainer component={Paper} variant="outlined">
+          <Table size="small" stickyHeader>
+            <TableHead>
+              <TableRow>
+                <TableCell>Data</TableCell>
+                <TableCell>Operação/Evento</TableCell>
+                <TableCell align="right">Qtd</TableCell>
+                <TableCell align="right">Preço Unit.</TableCell>
+                <TableCell align="right">Valor Total</TableCell>
+                <TableCell align="right" sx={{ bgcolor: 'action.hover', fontWeight: 'bold' }}>Qtd Final</TableCell>
+                <TableCell align="right" sx={{ bgcolor: 'action.hover', fontWeight: 'bold' }}>Preço Médio</TableCell>
+                <TableCell align="right" sx={{ bgcolor: 'action.hover', fontWeight: 'bold' }}>Custo Total</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {asset.transactionsHistory.map((entry, idx) => (
+                <TableRow key={idx}>
+                  <TableCell>{formatDate(entry.date)}</TableCell>
+                  <TableCell>{entry.description || entry.type}</TableCell>
+                  <TableCell align="right">{entry.quantity.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 4 })}</TableCell>
+                  <TableCell align="right">{formatCurrency(entry.unitPrice)}</TableCell>
+                  <TableCell align="right">{formatCurrency(entry.totalValue)}</TableCell>
+                  <TableCell align="right" sx={{ bgcolor: 'action.hover' }}>
+                    {entry.resultingQuantity?.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 4 })}
+                  </TableCell>
+                  <TableCell align="right" sx={{ bgcolor: 'action.hover' }}>
+                    {formatCurrency(entry.resultingAveragePrice || 0)}
+                  </TableCell>
+                  <TableCell align="right" sx={{ bgcolor: 'action.hover' }}>
+                    {formatCurrency(entry.resultingTotalCost || 0)}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {asset.transactionsHistory.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={8} align="center">Nenhum histórico disponível.</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="caption" color="text.secondary">
+            * O Preço Médio e Custo Total são recalculados após cada operação de compra ou evento que altere o custo (ex: bonificação com custo atribuído).
+            Vendas reduzem a quantidade e o custo total proporcionalmente, mantendo o preço médio inalterado.
+          </Typography>
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} color="primary">Fechar</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+/**
+ * Collapsible row for monthly results
+ */
+const CollapsibleRow: React.FC<{ row: any, onAssetClick: (assetCode: string) => void }> = (props) => {
+  const { row, onAssetClick } = props;
+  const [open, setOpen] = React.useState(false);
+
+  const monthNames = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+  ];
+
+  return (
+    <React.Fragment>
+      <TableRow sx={{ '& > *': { borderBottom: 'unset' } }}>
+        <TableCell width="50">
+          <IconButton
+            aria-label="expand row"
+            size="small"
+            onClick={() => setOpen(!open)}
+          >
+            {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+          </IconButton>
+        </TableCell>
+        <TableCell component="th" scope="row">
+          {monthNames[row.month - 1]}
+        </TableCell>
+        <TableCell align="right">{formatCurrency(row.totalSalesValue)}</TableCell>
+        <TableCell align="right" sx={{ color: row.netResult < 0 ? 'error.main' : 'success.main' }}>
+          {formatCurrency(row.netResult)}
+        </TableCell>
+        <TableCell align="right">{formatCurrency(row.taxDue)}</TableCell>
+        <TableCell align="right">{formatCurrency(row.taxWithheld)}</TableCell>
+        <TableCell align="right">{formatCurrency(row.taxToPay)}</TableCell>
+      </TableRow>
+      <TableRow>
+        <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={7}>
+          <Collapse in={open} timeout="auto" unmountOnExit>
+            <Box sx={{ margin: 1 }}>
+              <Typography variant="subtitle2" gutterBottom component="div" sx={{ fontWeight: 'bold' }}>
+                Detalhamento dos Ativos ({row.assetCategory})
+              </Typography>
+              <Table size="small" aria-label="trades">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Código</TableCell>
+                    <TableCell>Nome</TableCell>
+                    <TableCell align="right">Qtd</TableCell>
+                    <TableCell align="right">Preço Médio</TableCell>
+                    <TableCell align="right">Preço Venda</TableCell>
+                    <TableCell align="right">Venda Bruta</TableCell>
+                    <TableCell align="right">Resultado</TableCell>
+                    <TableCell align="right">Isento</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {row.tradeResults.map((trade: any, idx: number) => (
+                    <TableRow key={idx}>
+                      <TableCell>{trade.assetCode}</TableCell>
+                      <TableCell>
+                        <Link 
+                          component="button" 
+                          variant="body2" 
+                          onClick={() => onAssetClick(trade.assetCode)}
+                          sx={{ textAlign: 'left' }}
+                        >
+                          {trade.assetName}
+                        </Link>
+                      </TableCell>
+                      <TableCell align="right">{trade.quantity}</TableCell>
+                      <TableCell align="right">{formatCurrency(trade.purchasePrice)}</TableCell>
+                      <TableCell align="right">{formatCurrency(trade.salePrice)}</TableCell>
+                      <TableCell align="right">{formatCurrency(trade.saleValue)}</TableCell>
+                      <TableCell align="right" sx={{ color: trade.profitOrLoss < 0 ? 'error.main' : 'success.main' }}>
+                        {formatCurrency(trade.profitOrLoss)}
+                      </TableCell>
+                      <TableCell align="right">{trade.isExempt ? 'Sim' : 'Não'}</TableCell>
+                    </TableRow>
+                  ))}
+                  {row.tradeResults.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={8} align="center">Nenhum trade detalhado para este mês.</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </Box>
+          </Collapse>
+        </TableCell>
+      </TableRow>
+    </React.Fragment>
+  );
+};
 
 /**
  * Result page component
@@ -27,6 +208,10 @@ export const ResultPage: React.FC = () => {
   const { state, actions } = useAppContext();
   const { currentSessionData, currentSessionId } = state;
   const { generateDBKFile, generateExcelFile, setActiveStep } = actions;
+  
+  // State for asset details dialog
+  const [selectedAsset, setSelectedAsset] = React.useState<AssetPosition | null>(null);
+  const [isDetailsOpen, setIsDetailsOpen] = React.useState<boolean>(false);
   
   // State to track if original DBK file exists
   const [hasOriginalDBK, setHasOriginalDBK] = React.useState<boolean>(false);
@@ -151,10 +336,42 @@ export const ResultPage: React.FC = () => {
   const declaration = currentSessionData!.generatedDeclaration!;
   const taxPayerInfo = declaration.taxPayerInfo;
   
+  /**
+   * Handle asset name click
+   */
+  const handleAssetClick = (assetCode: string) => {
+    const asset = declaration.assetPositions.find(p => p.assetCode === assetCode);
+    if (asset) {
+      setSelectedAsset(asset);
+      setIsDetailsOpen(true);
+    }
+  };
+
+  /**
+   * Handle details dialog close
+   */
+  const handleDetailsClose = () => {
+    setIsDetailsOpen(false);
+  };
+
   // Define columns for the Assets DataGrid
   const assetColumns: GridColDef[] = [
     { field: 'assetCode', headerName: 'Código', width: 120 },
-    { field: 'assetName', headerName: 'Nome', width: 200 },
+    { 
+      field: 'assetName', 
+      headerName: 'Nome', 
+      width: 200,
+      renderCell: (params) => (
+        <Link 
+          component="button" 
+          variant="body2" 
+          onClick={() => handleAssetClick(params.row.assetCode)}
+          sx={{ textAlign: 'left' }}
+        >
+          {params.value}
+        </Link>
+      )
+    },
     { field: 'assetCategory', headerName: 'Categoria', width: 150 },
     { 
       field: 'quantity', 
@@ -189,75 +406,6 @@ export const ResultPage: React.FC = () => {
     id: index, // DataGrid requires a unique id for each row
     ...asset
   }));
-  
-  // Define columns for the Monthly Results DataGrid
-  const monthlyResultsColumns: GridColDef[] = [
-    { 
-      field: 'month', 
-      headerName: 'Mês', 
-      width: 120,
-      valueFormatter: (params) => {
-        const monthNames = [
-          'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-          'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-        ];
-        return monthNames[params.value - 1] || '';
-      }
-    },
-    { 
-      field: 'totalSalesValue', 
-      headerName: 'Vendas', 
-      type: 'number',
-      width: 150,
-      align: 'right',
-      headerAlign: 'right',
-      valueFormatter: (params) => formatCurrency(params.value)
-    },
-    { 
-      field: 'netResult', 
-      headerName: 'Lucro/Prejuízo', 
-      type: 'number',
-      width: 150,
-      align: 'right',
-      headerAlign: 'right',
-      valueFormatter: (params) => formatCurrency(params.value),
-      cellClassName: (params) => params.value < 0 ? 'negative-value' : 'positive-value'
-    },
-    { 
-      field: 'taxDue', 
-      headerName: 'Imposto Devido', 
-      type: 'number',
-      width: 150,
-      align: 'right',
-      headerAlign: 'right',
-      valueFormatter: (params) => formatCurrency(params.value)
-    },
-    { 
-      field: 'taxWithheld', 
-      headerName: 'Imposto Retido', 
-      type: 'number',
-      width: 150,
-      align: 'right',
-      headerAlign: 'right',
-      valueFormatter: (params) => formatCurrency(params.value)
-    },
-    { 
-      field: 'taxToPay', 
-      headerName: 'Imposto a Pagar', 
-      type: 'number',
-      width: 150,
-      align: 'right',
-      headerAlign: 'right',
-      valueFormatter: (params) => formatCurrency(params.value)
-    }
-  ];
-  
-  // Prepare rows for the Monthly Results DataGrid
-  const monthlyResultsRows = declaration.monthlyResults
-    .map((result, index) => ({
-      id: `${result.year}-${result.month}`, // Unique ID based on year and month
-      ...result
-    }));
   
   return (
     <Box>
@@ -427,33 +575,44 @@ export const ResultPage: React.FC = () => {
               Resultados Mensais
             </Typography>
             
-            <Box sx={{ height: 400, width: '100%' }}>
-              <DataGrid
-                rows={monthlyResultsRows}
-                columns={monthlyResultsColumns}
-                initialState={{
-                  pagination: {
-                    paginationModel: { page: 0, pageSize: 12 },
-                  },
-                  sorting: {
-                    sortModel: [{ field: 'month', sort: 'asc' }],
-                  },
-                }}
-                pageSizeOptions={[5, 12]}
-                checkboxSelection={false}
-                disableRowSelectionOnClick
-                density="standard"
-                sx={{ 
-                  '& .MuiDataGrid-cell': { fontSize: '0.875rem' },
-                  '& .MuiDataGrid-columnHeader': { fontSize: '0.875rem', fontWeight: 'bold' },
-                  '& .negative-value': { color: 'error.main' },
-                  '& .positive-value': { color: 'success.main' }
-                }}
-              />
-            </Box>
+            <TableContainer component={Paper} variant="outlined">
+              <Table aria-label="collapsible table" size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell width="50" />
+                    <TableCell>Mês</TableCell>
+                    <TableCell align="right">Vendas</TableCell>
+                    <TableCell align="right">Lucro/Prejuízo</TableCell>
+                    <TableCell align="right">Imp. Devido</TableCell>
+                    <TableCell align="right">Imp. Retido</TableCell>
+                    <TableCell align="right">Imp. a Pagar</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {declaration.monthlyResults.map((row, idx) => (
+                    <CollapsibleRow 
+                      key={`${row.year}-${row.month}-${idx}`} 
+                      row={row} 
+                      onAssetClick={handleAssetClick}
+                    />
+                  ))}
+                  {declaration.monthlyResults.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} align="center">Nenhum resultado mensal encontrado.</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
           </Box>
         </Stack>
       </Paper>
+
+      <AssetDetailsDialog 
+        asset={selectedAsset}
+        open={isDetailsOpen}
+        onClose={handleDetailsClose}
+      />
       
       <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
         <Button
