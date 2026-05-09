@@ -104,7 +104,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
         {/* ── Scrollable content ─────────────────────────────────── */}
         <Box component="main" sx={{ flexGrow: 1, overflowY: 'auto' }}>
-          <Container sx={{ py: 3 }}>
+          <Container maxWidth={false} sx={{ py: 3 }}>
             {children}
           </Container>
         </Box>

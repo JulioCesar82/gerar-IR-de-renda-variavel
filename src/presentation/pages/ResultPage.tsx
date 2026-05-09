@@ -442,6 +442,7 @@ export const ResultPage: React.FC = () => {
       )
     },
     { field: 'assetCategory', headerName: 'Categoria', width: 90 },
+    { field: 'cnpj', headerName: 'CNPJ', width: 150 },
     {
       field: '_grupo',
       headerName: 'Grupo',
