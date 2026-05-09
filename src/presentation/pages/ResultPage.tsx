@@ -38,6 +38,18 @@ import { Container } from '../../infrastructure/di/Container';
 import { tryDownloadFile } from '../../utils/presentation';
 import { AssetPosition } from 'src/core/domain/AssetPosition';
 import { AssetCategory } from '../../core/domain/Transaction';
+import { cnpjDataMap } from '../../infrastructure/data/staticTickerInfoData';
+
+// Reverse map: cleaned CNPJ digits → razão social
+const cnpjToName = new Map<string, string>();
+cnpjDataMap.forEach(({ cnpj, name }) => {
+  if (cnpj) cnpjToName.set(cnpj.replace(/[^\d]/g, ''), name);
+});
+
+const getRazaoSocial = (cnpj: string | undefined): string | null => {
+  if (!cnpj) return null;
+  return cnpjToName.get(cnpj.replace(/[^\d]/g, '')) ?? null;
+};
 
 /** Broker options shown in the administrator dropdown. */
 const BROKERS: { id: string; label: string; suffix: string }[] = [
@@ -442,7 +454,25 @@ export const ResultPage: React.FC = () => {
       )
     },
     { field: 'assetCategory', headerName: 'Categoria', width: 90 },
-    { field: 'cnpj', headerName: 'CNPJ', width: 150 },
+    {
+      field: 'cnpj',
+      headerName: 'CNPJ',
+      width: 200,
+      renderCell: (params) => {
+        const cnpj = params.value as string | undefined;
+        const razao = getRazaoSocial(cnpj);
+        return (
+          <Box sx={{ lineHeight: 1.2 }}>
+            <Typography variant="body2">{cnpj ?? '—'}</Typography>
+            {razao && (
+              <Typography variant="caption" color="text.secondary" display="block">
+                {razao}
+              </Typography>
+            )}
+          </Box>
+        );
+      },
+    },
     {
       field: '_grupo',
       headerName: 'Grupo',
