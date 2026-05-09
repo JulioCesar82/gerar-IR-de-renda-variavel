@@ -27,29 +27,66 @@
     "@types/react": "^18.2.42",
     "@types/react-dom": "^18.2.17",
     "@typescript-eslint/eslint-plugin": "^8.29.1",
+    "@typescript-eslint/parser": "^8.29.1",
     "@vitejs/plugin-react": "^4.4.1",
+    "autoprefixer": "^10.4.17",
     "dotenv": "^16.5.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react": "^7.34.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.19",
     "gh-pages": "^6.3.0",
-    "react-scripts": "5.0.1",
+    "jest": "^27.5.1",
+    "tailwindcss": "^3.4.1",
     "typescript": "^4.9.5",
     "vite": "^6.3.2"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d build",
-    "test": "python scripts/generate_asset_tests.py --year 2025 && react-scripts test",
-    "test:specific-asset": "react-scripts test src/infrastructure/adapters/__tests__/calculation/CMIG.test.ts",
-    "eject": "react-scripts eject",
-    "postinstall": "npm start"
+    "deploy": "gh-pages -d dist",
+    "test": "python scripts/generate_asset_tests.py --year 2025 && jest",
+    "test:specific-asset": "jest src/infrastructure/adapters/__tests__/calculation/CMIG.test.ts"
   },
   "eslintConfig": {
+    "env": {
+      "browser": true,
+      "es2021": true,
+      "node": true,
+      "jest": true
+    },
     "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
+      "eslint:recommended",
+      "plugin:@typescript-eslint/recommended",
+      "plugin:react/recommended",
+      "plugin:react-hooks/recommended",
+      "plugin:react-refresh/recommended"
+    ],
+    "parser": "@typescript-eslint/parser",
+    "parserOptions": {
+      "ecmaFeatures": {
+        "jsx": true
+      },
+      "ecmaVersion": "latest",
+      "sourceType": "module"
+    },
+    "plugins": [
+      "react",
+      "react-hooks",
+      "@typescript-eslint",
+      "react-refresh"
+    ],
+    "rules": {
+      "react-refresh/only-export-components": "warn",
+      "react/react-in-jsx-scope": "off"
+    },
+    "settings": {
+      "react": {
+        "version": "detect"
+      }
+    }
   },
   "browserslist": {
     "production": [

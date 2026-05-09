@@ -18,18 +18,59 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Link
+  Link,
+  Tooltip,
+  Snackbar
 } from '@mui/material';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import CloseIcon from '@mui/icons-material/Close';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 
+import { createPortal } from 'react-dom';
 import { useAppContext } from '../context/AppContext';
+import { useNavFooter } from '../context/NavFooterContext';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { Container } from '../../infrastructure/di/Container';
-import { tryDownloadFile } from 'src/utils/presentation';
+import { tryDownloadFile } from '../../utils/presentation';
 import { AssetPosition } from 'src/core/domain/AssetPosition';
+import { AssetCategory } from '../../core/domain/Transaction';
+
+/**
+ * Returns the Grupo and Código values shown in the IRPF program's
+ * "Bens e Direitos" section for a given asset position.
+ */
+const getIRPFGrupoCodigo = (pos: AssetPosition): { grupo: string; codigo: string } => {
+  switch (pos.assetCategory) {
+    case AssetCategory.STOCK:
+      return { grupo: '03', codigo: '01' };
+    case AssetCategory.BDR:
+      return { grupo: '04', codigo: '04' };
+    case AssetCategory.FII:
+      return { grupo: '07', codigo: '03' };
+    case AssetCategory.ETF:
+      return { grupo: '07', codigo: '10' };
+    default:
+      return { grupo: '99', codigo: '99' };
+  }
+};
+
+/**
+ * Builds the "Discriminação" text for an asset position,
+ * matching the format used in the generated DBK / Excel files.
+ */
+const buildDiscriminacao = (pos: AssetPosition): string => {
+  const qty = pos.quantity.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  const pm  = pos.averagePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  const total = pos.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const cnpj = pos.cnpj || 'CNPJ_NAO_ENCONTRADO';
+
+  if (pos.assetCategory === AssetCategory.FII) {
+    return `${qty} Cotas do FII ${pos.assetName} (${pos.assetCode}), Custo Médio R$ ${pm} que totaliza R$ ${total}. CNPJ: ${cnpj}`;
+  }
+  return `${qty} Ações de ${pos.assetName} (${pos.assetCode}), Custo Médio R$ ${pm} que totaliza R$ ${total}. CNPJ: ${cnpj}`;
+};
 
 /**
  * Dialog to show asset calculation details
@@ -208,10 +249,14 @@ export const ResultPage: React.FC = () => {
   const { state, actions } = useAppContext();
   const { currentSessionData, currentSessionId } = state;
   const { generateDBKFile, generateExcelFile, setActiveStep } = actions;
-  
+  const navFooter = useNavFooter();
+
   // State for asset details dialog
   const [selectedAsset, setSelectedAsset] = React.useState<AssetPosition | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = React.useState<boolean>(false);
+
+  // Snackbar for copy feedback
+  const [copySnackbar, setCopySnackbar] = React.useState(false);
   
   // State to track if original DBK file exists
   const [hasOriginalDBK, setHasOriginalDBK] = React.useState<boolean>(false);
@@ -356,11 +401,11 @@ export const ResultPage: React.FC = () => {
 
   // Define columns for the Assets DataGrid
   const assetColumns: GridColDef[] = [
-    { field: 'assetCode', headerName: 'Código', width: 120 },
+    { field: 'assetCode', headerName: 'Código', width: 110 },
     { 
       field: 'assetName', 
       headerName: 'Nome', 
-      width: 200,
+      width: 190,
       renderCell: (params) => (
         <Link 
           component="button" 
@@ -372,7 +417,23 @@ export const ResultPage: React.FC = () => {
         </Link>
       )
     },
-    { field: 'assetCategory', headerName: 'Categoria', width: 150 },
+    { field: 'assetCategory', headerName: 'Categoria', width: 120 },
+    {
+      field: '_grupo',
+      headerName: 'Grupo',
+      width: 70,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => getIRPFGrupoCodigo(params.row as AssetPosition).grupo,
+    },
+    {
+      field: '_codigo',
+      headerName: 'Código',
+      width: 70,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => getIRPFGrupoCodigo(params.row as AssetPosition).codigo,
+    },
     { 
       field: 'quantity', 
       headerName: 'Quantidade', 
@@ -385,7 +446,7 @@ export const ResultPage: React.FC = () => {
       field: 'averagePrice', 
       headerName: 'Preço Médio', 
       type: 'number',
-      width: 150,
+      width: 140,
       align: 'right',
       headerAlign: 'right',
       valueFormatter: (params) => formatCurrency(params.value)
@@ -394,10 +455,34 @@ export const ResultPage: React.FC = () => {
       field: 'totalCost', 
       headerName: 'Valor Total', 
       type: 'number',
-      width: 150,
+      width: 140,
       align: 'right',
       headerAlign: 'right',
       valueFormatter: (params) => formatCurrency(params.value)
+    },
+    {
+      field: '_copy',
+      headerName: 'Discriminação',
+      width: 120,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => {
+        const pos = params.row as AssetPosition;
+        const text = buildDiscriminacao(pos);
+        return (
+          <Tooltip title={text} placement="left">
+            <IconButton
+              size="small"
+              onClick={() => {
+                navigator.clipboard.writeText(text);
+                setCopySnackbar(true);
+              }}
+            >
+              <ContentCopyIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        );
+      }
     }
   ];
   
@@ -544,19 +629,16 @@ export const ResultPage: React.FC = () => {
               Ativos
             </Typography>
             
-            <Box sx={{ height: 400, width: '100%' }}>
+            <Box sx={{ width: '100%' }}>
               <DataGrid
                 rows={assetRows}
                 columns={assetColumns}
                 initialState={{
-                  pagination: {
-                    paginationModel: { page: 0, pageSize: 10 },
-                  },
                   sorting: {
                     sortModel: [{ field: 'assetCode', sort: 'asc' }],
                   },
                 }}
-                pageSizeOptions={[5, 10, 25]}
+                hideFooter
                 checkboxSelection={false}
                 disableRowSelectionOnClick
                 density="standard"
@@ -613,22 +695,24 @@ export const ResultPage: React.FC = () => {
         open={isDetailsOpen}
         onClose={handleDetailsClose}
       />
-      
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-        <Button
-          variant="outlined"
-          onClick={handleBackClick}
-        >
-          Voltar
-        </Button>
-        
-        <Button
-          variant="outlined"
-          onClick={handleNewDeclarationClick}
-        >
-          Nova Declaração
-        </Button>
-      </Box>
+
+      <Snackbar
+        open={copySnackbar}
+        autoHideDuration={2000}
+        onClose={() => setCopySnackbar(false)}
+        message="Discriminação copiada!"
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
+      {navFooter && createPortal(
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+          <Button variant="outlined" onClick={handleBackClick}>Voltar</Button>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button variant="outlined" onClick={() => setActiveStep(1)}>Reimportar Arquivos</Button>
+            <Button variant="outlined" onClick={handleNewDeclarationClick}>Nova Declaração</Button>
+          </Box>
+        </Box>,
+        navFooter
+      )}
     </Box>
   );
 };

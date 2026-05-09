@@ -17,7 +17,9 @@ import {
 } from '@mui/material';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 
+import { createPortal } from 'react-dom';
 import { useAppContext } from '../context/AppContext';
+import { useNavFooter } from '../context/NavFooterContext';
 import { formatCurrency } from '../../utils/formatters';
 
 /**
@@ -27,6 +29,7 @@ export const ProcessPage: React.FC = () => {
   const { state, actions } = useAppContext();
   const { currentSessionData, isProcessing, processingError, inconsistencies } = state;
   const { processAssets, setActiveStep, setForceActiveStep } = actions;
+  const navFooter = useNavFooter();
   
   // State
   const [showInconsistencies, setShowInconsistencies] = useState(false);
@@ -52,7 +55,7 @@ export const ProcessPage: React.FC = () => {
    * Handle back click
    */
   const handleBackClick = () => {
-    setActiveStep(0);
+    setActiveStep(1);
   };
   
   /**
@@ -216,39 +219,38 @@ export const ProcessPage: React.FC = () => {
           {processingError && (
             <Alert severity="error">{processingError}</Alert>
           )}
-          
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, mt: 2 }}>
-            <Button
-              variant="outlined"
-              onClick={handleBackClick}
-              disabled={isProcessing}
-            >
-              Voltar
-            </Button>
-            
-            <Box>
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={handleProcessClick}
-                disabled={isProcessing}
-                startIcon={isProcessing ? <CircularProgress size={20} /> : undefined}
-                sx={{ mr: 2 }}
-              >
-                {isProcessing ? 'Processando...' : 'Processar'}
-              </Button>
-              
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={handleNextClick}
-                disabled={!isProcessed || isProcessing}
-              >
-                Próximo
-              </Button>
-            </Box>
-          </Box>
         </Stack>
+      {navFooter && createPortal(
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+          <Button
+            variant="outlined"
+            onClick={handleBackClick}
+            disabled={isProcessing}
+          >
+            Voltar
+          </Button>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleProcessClick}
+              disabled={isProcessing}
+              startIcon={isProcessing ? <CircularProgress size={20} /> : undefined}
+            >
+              {isProcessing ? 'Processando...' : 'Processar'}
+            </Button>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleNextClick}
+              disabled={!isProcessed || isProcessing}
+            >
+              Próximo
+            </Button>
+          </Box>
+        </Box>,
+        navFooter
+      )}
       </Paper>
       
       {isProcessed && (

@@ -53,6 +53,7 @@ interface AppContextActions {
   
   // File import
   importFiles: (negotiationFile: File, movementFile: File | null, year: number, description?: string) => Promise<void>;
+  reimportFiles: (negotiationFile: File, movementFile: File | null) => Promise<void>;
   
   // Processing
   processAssets: () => Promise<void>;
@@ -199,6 +200,11 @@ export const AppContextProvider: React.FC<AppContextProviderProps> = ({ children
       console.log('AppContext: Session data loaded:', sessionData ? 'success' : 'null');
       
       setCurrentSessionData(sessionData);
+
+      // Restore taxPayerInfo from the saved declaration if available
+      if (sessionData?.generatedDeclaration?.taxPayerInfo) {
+        setTaxPayerInfo(sessionData.generatedDeclaration.taxPayerInfo);
+      }
       
       // If forceActiveStep is set, use that value
       if (forceActiveStep !== null) {
@@ -441,6 +447,78 @@ export const AppContextProvider: React.FC<AppContextProviderProps> = ({ children
     }
   };
   
+
+  /**
+   * Re-import files into the current session (without creating a new session)
+   * @param negotiationFile The negotiation file
+   * @param movementFile The movement file
+   */
+  const reimportFiles = async (
+    negotiationFile: File,
+    movementFile: File | null
+  ): Promise<void> => {
+    try {
+      if (!currentSessionId) {
+        throw new Error('No session selected');
+      }
+      console.log('AppContext: Starting re-import files process for session:', currentSessionId);
+      setIsImporting(true);
+      setImportError(null);
+
+      // Get session year and description from the sessions list
+      const session = sessions.find(s => s.id === currentSessionId);
+      const year = session?.year ?? new Date().getFullYear() - 1;
+      const description = session?.description;
+
+      // Import files into the existing session (overwrites transactions/events)
+      const importFilesUseCase = container.getImportFilesUseCase();
+
+      try {
+        const result = await importFilesUseCase.execute(
+          currentSessionId,
+          negotiationFile,
+          movementFile,
+          year,
+          description
+        );
+        console.log('AppContext: Files re-imported successfully:', result);
+
+        // Update in-memory session status back to PROCESSED
+        const newInMemoryStatus = new Map(inMemorySessionStatus);
+        newInMemoryStatus.set(currentSessionId, SessionStatus.PROCESSED);
+        setInMemorySessionStatus(newInMemoryStatus);
+      } catch (importError) {
+        console.error('AppContext: Error in ImportFilesUseCase.execute during re-import:', importError);
+        throw importError;
+      }
+
+      // Reload session data
+      const sessionData = await container.getSessionManagementUseCase().getSessionData(currentSessionId);
+
+      // Set force active step so we land on the process page
+      setForceActiveStep(2);
+      setCurrentSessionData(sessionData);
+      setActiveStep(2);
+
+      setTimeout(() => {
+        setForceActiveStep(null);
+      }, 2000);
+
+      // Reload sessions list in the background
+      loadSessions().catch(error => {
+        console.error('AppContext: Error reloading sessions after re-import:', error);
+      });
+
+      setIsImporting(false);
+      console.log('AppContext: Re-import process completed successfully');
+    } catch (error) {
+      console.error('AppContext: Error re-importing files:', error);
+      setImportError((error as Error).message);
+      setIsImporting(false);
+      throw error;
+    }
+  };
+
 
   /**
    * Process assets
@@ -691,6 +769,7 @@ export const AppContextProvider: React.FC<AppContextProviderProps> = ({ children
       importSession,
       
       importFiles,
+      reimportFiles,
       processAssets,
       generateDeclaration,
 

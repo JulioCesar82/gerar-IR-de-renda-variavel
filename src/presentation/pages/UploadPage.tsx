@@ -16,15 +16,22 @@ import {
 } from '@mui/material';
 import { CloudUpload as CloudUploadIcon } from '@mui/icons-material';
 
+import { createPortal } from 'react-dom';
 import { useAppContext } from '../context/AppContext';
+import { useNavFooter } from '../context/NavFooterContext';
 
 /**
  * Upload page component
  */
 export const UploadPage: React.FC = () => {
   const { state, actions } = useAppContext();
-  const { isImporting, importError } = state;
-  const { importFiles, setActiveStep } = actions;
+  const { isImporting, importError, currentSessionId, sessions } = state;
+  const { importFiles, reimportFiles, setActiveStep } = actions;
+  const navFooter = useNavFooter();
+
+  // Re-import mode: updating files in an existing session
+  const isReimportMode = currentSessionId !== null;
+  const currentSession = isReimportMode ? sessions.find(s => s.id === currentSessionId) : null;
   
   // State
   const [negotiationFile, setNegotiationFile] = useState<File | null>(null);
@@ -75,20 +82,14 @@ export const UploadPage: React.FC = () => {
    */
   const handleSubmit = async () => {
     if (negotiationFile) {
-      console.log('UploadPage: Starting import process');
-      console.log('UploadPage: Files to import:', { 
-        negotiationFile, 
-        movementFile, 
-        year, 
-        description 
-      });
-      
       try {
-        await importFiles(negotiationFile, movementFile, year, description);
-        console.log('UploadPage: Import completed successfully');
+        if (isReimportMode) {
+          await reimportFiles(negotiationFile, movementFile);
+        } else {
+          await importFiles(negotiationFile, movementFile, year, description);
+        }
       } catch (error) {
         console.error('UploadPage: Error during import:', error);
-        // Display error to user if not already handled by the context
         if (!importError) {
           alert(`Erro ao importar arquivos: ${(error as Error).message}`);
         }
@@ -103,7 +104,11 @@ export const UploadPage: React.FC = () => {
    * Handle cancel
    */
   const handleCancel = () => {
-    setActiveStep(0);
+    if (isReimportMode) {
+      setActiveStep(2); // Back to ProcessPage
+    } else {
+      setActiveStep(0); // Back to HomePage
+    }
   };
   
   // Generate year options
@@ -122,31 +127,39 @@ export const UploadPage: React.FC = () => {
         </Typography>
         
         <Stack spacing={3}>
-          <TextField
-            label="Descrição da Sessão"
-            fullWidth
-            value={description}
-            onChange={handleDescriptionChange}
-            margin="normal"
-            helperText="Uma descrição opcional para identificar esta sessão"
-          />
-          
-          <FormControl fullWidth margin="normal">
-            <InputLabel id="year-select-label">Ano</InputLabel>
-            <Select
-              labelId="year-select-label"
-              id="year-select"
-              value={year}
-              label="Ano"
-              onChange={handleYearChange}
-            >
-              {yearOptions.map((y) => (
-                <MenuItem key={y} value={y}>
-                  {y}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          {isReimportMode ? (
+            <Alert severity="warning">
+              Modo de reimportação: os arquivos serão substituídos na sessão <strong>{currentSession?.description || `Ano ${currentSession?.year}`}</strong>. Os dados calculados anteriormente serão perdidos e você precisará clicar em &quot;Processar&quot; novamente.
+            </Alert>
+          ) : (
+            <>
+              <TextField
+                label="Descrição da Sessão"
+                fullWidth
+                value={description}
+                onChange={handleDescriptionChange}
+                margin="normal"
+                helperText="Uma descrição opcional para identificar esta sessão"
+              />
+              
+              <FormControl fullWidth margin="normal">
+                <InputLabel id="year-select-label">Ano</InputLabel>
+                <Select
+                  labelId="year-select-label"
+                  id="year-select"
+                  value={year}
+                  label="Ano"
+                  onChange={handleYearChange}
+                >
+                  {yearOptions.map((y) => (
+                    <MenuItem key={y} value={y}>
+                      {y}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </>
+          )}
           
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
             <Box>
@@ -199,25 +212,6 @@ export const UploadPage: React.FC = () => {
           {importError && (
             <Alert severity="error">{importError}</Alert>
           )}
-          
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 2 }}>
-            <Button
-              variant="outlined"
-              onClick={handleCancel}
-              disabled={isImporting}
-            >
-              Cancelar
-            </Button>
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={handleSubmit}
-              disabled={!negotiationFile || isImporting}
-              startIcon={isImporting ? <CircularProgress size={20} /> : undefined}
-            >
-              {isImporting ? 'Importando...' : 'Importar'}
-            </Button>
-          </Box>
         </Stack>
       </Paper>
       
@@ -246,6 +240,27 @@ export const UploadPage: React.FC = () => {
           5. Clique em "Importar" para iniciar o processamento.
         </Typography>
       </Paper>
+      {navFooter && createPortal(
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, width: '100%' }}>
+          <Button
+            variant="outlined"
+            onClick={handleCancel}
+            disabled={isImporting}
+          >
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleSubmit}
+            disabled={!negotiationFile || isImporting}
+            startIcon={isImporting ? <CircularProgress size={20} /> : undefined}
+          >
+            {isImporting ? 'Importando...' : 'Importar'}
+          </Button>
+        </Box>,
+        navFooter
+      )}
     </Box>
   );
 };
