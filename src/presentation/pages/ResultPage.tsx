@@ -38,18 +38,6 @@ import { Container } from '../../infrastructure/di/Container';
 import { tryDownloadFile } from '../../utils/presentation';
 import { AssetPosition } from 'src/core/domain/AssetPosition';
 import { AssetCategory } from '../../core/domain/Transaction';
-import { cnpjDataMap } from '../../infrastructure/data/staticTickerInfoData';
-
-// Reverse map: cleaned CNPJ digits → razão social
-const cnpjToName = new Map<string, string>();
-cnpjDataMap.forEach(({ cnpj, name }) => {
-  if (cnpj) cnpjToName.set(cnpj.replace(/[^\d]/g, ''), name);
-});
-
-const getRazaoSocial = (cnpj: string | undefined): string | null => {
-  if (!cnpj) return null;
-  return cnpjToName.get(cnpj.replace(/[^\d]/g, '')) ?? null;
-};
 
 /** Broker options shown in the administrator dropdown. */
 const BROKERS: { id: string; label: string; suffix: string }[] = [
@@ -286,6 +274,9 @@ export const ResultPage: React.FC = () => {
   // Snackbar for copy feedback
   const [copySnackbar, setCopySnackbar] = React.useState(false);
 
+  // Razão social fetched from publica.cnpj.ws, keyed by cleaned CNPJ digits
+  const [razaoSocialMap, setRazaoSocialMap] = React.useState<Record<string, string>>({});
+
   // Broker selection per asset row (keyed by row id, defaults to 'nu')
   const [brokerSelections, setBrokerSelections] = React.useState<Record<number, string>>({});
   const getBrokerSuffix = (rowId: number): string => {
@@ -293,6 +284,46 @@ export const ResultPage: React.FC = () => {
     return BROKERS.find(b => b.id === id)?.suffix ?? '';
   };
   
+  // Fetch razão social from Receita Federal public API for each unique CNPJ in the declaration
+  React.useEffect(() => {
+    const declaration = currentSessionData?.generatedDeclaration;
+    if (!declaration) return;
+
+    const uniqueCnpjs = [
+      ...new Set(
+        declaration.assetPositions
+          .map(p => p.cnpj?.replace(/[^\d]/g, ''))
+          .filter((c): c is string => !!c && c.length === 14)
+      ),
+    ];
+
+    if (uniqueCnpjs.length === 0) return;
+
+    let cancelled = false;
+
+    const fetchAll = async () => {
+      for (const cnpj of uniqueCnpjs) {
+        if (cancelled) break;
+        try {
+          const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.razao_social) {
+              // Update incrementally so each name appears as soon as it loads
+              setRazaoSocialMap(prev => ({ ...prev, [cnpj]: data.razao_social }));
+            }
+          }
+        } catch {
+          // silently ignore network errors per CNPJ
+        }
+        await new Promise(r => setTimeout(r, 600));
+      }
+    };
+
+    fetchAll();
+    return () => { cancelled = true; };
+  }, [currentSessionData?.generatedDeclaration]);
+
   // State to track if original DBK file exists
   const [hasOriginalDBK, setHasOriginalDBK] = React.useState<boolean>(false);
   
@@ -460,7 +491,8 @@ export const ResultPage: React.FC = () => {
       width: 200,
       renderCell: (params) => {
         const cnpj = params.value as string | undefined;
-        const razao = getRazaoSocial(cnpj);
+        const key = cnpj?.replace(/[^\d]/g, '') ?? '';
+        const razao = razaoSocialMap[key];
         return (
           <Box sx={{ lineHeight: 1.2 }}>
             <Typography variant="body2">{cnpj ?? '—'}</Typography>
@@ -684,6 +716,7 @@ export const ResultPage: React.FC = () => {
                 rows={assetRows}
                 columns={assetColumns}
                 autoHeight
+                getRowHeight={() => 'auto'}
                 initialState={{
                   sorting: {
                     sortModel: [
@@ -697,7 +730,7 @@ export const ResultPage: React.FC = () => {
                 disableRowSelectionOnClick
                 density="standard"
                 sx={{ 
-                  '& .MuiDataGrid-cell': { fontSize: '0.875rem' },
+                  '& .MuiDataGrid-cell': { fontSize: '0.875rem', py: 1, alignItems: 'flex-start' },
                   '& .MuiDataGrid-columnHeader': { fontSize: '0.875rem', fontWeight: 'bold' },
                   '& .negative-value': { color: 'error.main' },
                   '& .positive-value': { color: 'success.main' }
