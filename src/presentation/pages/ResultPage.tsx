@@ -65,11 +65,12 @@ const buildDiscriminacao = (pos: AssetPosition): string => {
   const pm  = pos.averagePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
   const total = pos.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const cnpj = pos.cnpj || 'CNPJ_NAO_ENCONTRADO';
+  const suffix = ' administrado por Nu Investimentos S.A., CNPJ 62.169.875/0001-79.';
 
   if (pos.assetCategory === AssetCategory.FII) {
-    return `${qty} Cotas do FII ${pos.assetName} (${pos.assetCode}), Custo Médio R$ ${pm} que totaliza R$ ${total}. CNPJ: ${cnpj}`;
+    return `${qty} Cotas do FII ${pos.assetName} (${pos.assetCode}), Custo Médio R$ ${pm} que totaliza R$ ${total}. CNPJ: ${cnpj}${suffix}`;
   }
-  return `${qty} Ações de ${pos.assetName} (${pos.assetCode}), Custo Médio R$ ${pm} que totaliza R$ ${total}. CNPJ: ${cnpj}`;
+  return `${qty} Ações de ${pos.assetName} (${pos.assetCode}), Custo Médio R$ ${pm} que totaliza R$ ${total}. CNPJ: ${cnpj}${suffix}`;
 };
 
 /**
@@ -507,41 +508,6 @@ export const ResultPage: React.FC = () => {
           A declaração foi gerada com sucesso e está pronta para ser importada no programa da Receita Federal.
         </Typography>
         
-        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 2, mb: 3 }}>        
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleDBKDownloadClick}
-            size="large"
-          >
-            Baixar Arquivo .DBK
-          </Button>
-        </Box>
-
-        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 2, mb: 3 }}>        
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleDownloadExcel}
-            size="large"
-          >
-            Baixar Relatório Excel
-          </Button>
-        </Box>
-        
-        {hasOriginalDBK && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
-            <Button
-              variant="outlined"
-              color="secondary"
-              onClick={handleOriginalDBKDownloadClick}
-              size="medium"
-            >
-              Baixar DBK Original
-            </Button>
-          </Box>
-        )}
-        
         <Divider sx={{ my: 3 }} />
         
         <Typography variant="h6" gutterBottom>
@@ -707,6 +673,11 @@ export const ResultPage: React.FC = () => {
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
           <Button variant="outlined" onClick={handleBackClick}>Voltar</Button>
           <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button variant="contained" color="primary" onClick={handleDBKDownloadClick}>Baixar Arquivo .DBK</Button>
+            <Button variant="contained" color="primary" onClick={handleDownloadExcel}>Baixar Relatório Excel</Button>
+            {hasOriginalDBK && (
+              <Button variant="outlined" color="secondary" onClick={handleOriginalDBKDownloadClick}>Baixar DBK Original</Button>
+            )}
             <Button variant="outlined" onClick={() => setActiveStep(1)}>Reimportar Arquivos</Button>
             <Button variant="outlined" onClick={handleNewDeclarationClick}>Nova Declaração</Button>
           </Box>
