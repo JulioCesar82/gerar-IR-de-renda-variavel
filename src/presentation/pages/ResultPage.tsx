@@ -80,12 +80,12 @@ const buildDiscriminacao = (pos: AssetPosition, brokerSuffix: string): string =>
   const qty = pos.quantity.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
   const pm  = pos.averagePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
   const total = pos.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const cnpj = pos.cnpj || 'CNPJ_NAO_ENCONTRADO';
+  const cnpjPart = pos.cnpj ? `. CNPJ: ${pos.cnpj}` : '';
 
   if (pos.assetCategory === AssetCategory.FII) {
-    return `${qty} Cotas do FII ${pos.assetName} (${pos.assetCode}), Custo Médio R$ ${pm} que totaliza R$ ${total}. CNPJ: ${cnpj}${brokerSuffix}`;
+    return `${qty} Cotas do FII ${pos.assetName} (${pos.assetCode}), Custo Médio R$ ${pm} que totaliza R$ ${total}${cnpjPart}${brokerSuffix}`;
   }
-  return `${qty} Ações de ${pos.assetName} (${pos.assetCode}), Custo Médio R$ ${pm} que totaliza R$ ${total}. CNPJ: ${cnpj}${brokerSuffix}`;
+  return `${qty} Ações de ${pos.assetName} (${pos.assetCode}), Custo Médio R$ ${pm} que totaliza R$ ${total}${cnpjPart}${brokerSuffix}`;
 };
 
 /**
