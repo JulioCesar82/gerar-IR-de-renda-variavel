@@ -28,7 +28,7 @@ import {
 
 import { useAppContext } from '../context/AppContext';
 import { SessionStatus } from '../../core/interfaces/StoragePort';
-import { tryDownloadFile } from 'src/utils/presentation';
+import { tryDownloadFile } from '../../utils/presentation';
 
 /**
  * Home page component

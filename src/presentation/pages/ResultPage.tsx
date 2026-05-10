@@ -18,18 +18,75 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Link
+  Link,
+  Tooltip,
+  Snackbar,
+  Select,
+  MenuItem
 } from '@mui/material';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import CloseIcon from '@mui/icons-material/Close';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 
+import { createPortal } from 'react-dom';
 import { useAppContext } from '../context/AppContext';
+import { useNavFooter } from '../context/NavFooterContext';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { Container } from '../../infrastructure/di/Container';
-import { tryDownloadFile } from 'src/utils/presentation';
+import { tryDownloadFile } from '../../utils/presentation';
 import { AssetPosition } from 'src/core/domain/AssetPosition';
+import { AssetCategory } from '../../core/domain/Transaction';
+
+/** Broker options shown in the administrator dropdown. */
+const BROKERS: { id: string; label: string; suffix: string }[] = [
+  { id: 'bolsa',  label: 'Direto na Bolsa',    suffix: '' },
+  { id: 'nu',     label: 'Nu Investimentos',    suffix: ' administrado por Nu Investimentos S.A., CNPJ 62.169.875/0001-79.' },
+  { id: 'xp',     label: 'XP Investimentos',    suffix: ' administrado por XP Investimentos CCTVM S.A., CNPJ 02.332.886/0001-04.' },
+  { id: 'clear',  label: 'Clear Corretora',     suffix: ' administrado por Clear Corretora – Grupo XP, CNPJ 02.332.886/0001-04.' },
+  { id: 'rico',   label: 'Rico Investimentos',  suffix: ' administrado por Rico Investimentos – Grupo XP, CNPJ 02.332.886/0001-04.' },
+  { id: 'btg',    label: 'BTG Pactual',         suffix: ' administrado por BTG Pactual Digital S.A., CNPJ 34.111.187/0001-12.' },
+  { id: 'inter',  label: 'Inter',               suffix: ' administrado por Banco Inter S.A., CNPJ 00.416.968/0001-01.' },
+  { id: 'itau',   label: 'Itaú',                suffix: ' administrado por Itaú Unibanco S.A., CNPJ 60.701.190/0001-04.' },
+  { id: 'modal',  label: 'Modal Mais',          suffix: ' administrado por Banco Modal S.A., CNPJ 30.723.886/0001-62.' },
+  { id: 'c6',     label: 'C6 Bank',             suffix: ' administrado por C6 Corretora de Títulos e Valores Mobiliários S.A., CNPJ 11.970.695/0001-74.' },
+];
+
+/**
+ * Returns the Grupo and Código values shown in the IRPF program's
+ * "Bens e Direitos" section for a given asset position.
+ */
+const getIRPFGrupoCodigo = (pos: AssetPosition): { grupo: string; codigo: string } => {
+  switch (pos.assetCategory) {
+    case AssetCategory.STOCK:
+      return { grupo: '03', codigo: '01' };
+    case AssetCategory.BDR:
+      return { grupo: '04', codigo: '04' };
+    case AssetCategory.FII:
+      return { grupo: '07', codigo: '03' };
+    case AssetCategory.ETF:
+      return { grupo: '07', codigo: '10' };
+    default:
+      return { grupo: '99', codigo: '99' };
+  }
+};
+
+/**
+ * Builds the "Discriminação" text for an asset position,
+ * matching the format used in the generated DBK / Excel files.
+ */
+const buildDiscriminacao = (pos: AssetPosition, brokerSuffix: string): string => {
+  const qty = pos.quantity.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  const pm  = pos.averagePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  const total = pos.totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const cnpjPart = pos.cnpj ? `. CNPJ: ${pos.cnpj}` : '';
+
+  if (pos.assetCategory === AssetCategory.FII) {
+    return `${qty} Cotas do FII ${pos.assetName} (${pos.assetCode}), Custo Médio R$ ${pm} que totaliza R$ ${total}${cnpjPart}${brokerSuffix}`;
+  }
+  return `${qty} Ações de ${pos.assetName} (${pos.assetCode}), Custo Médio R$ ${pm} que totaliza R$ ${total}${cnpjPart}${brokerSuffix}`;
+};
 
 /**
  * Dialog to show asset calculation details
@@ -208,11 +265,65 @@ export const ResultPage: React.FC = () => {
   const { state, actions } = useAppContext();
   const { currentSessionData, currentSessionId } = state;
   const { generateDBKFile, generateExcelFile, setActiveStep } = actions;
-  
+  const navFooter = useNavFooter();
+
   // State for asset details dialog
   const [selectedAsset, setSelectedAsset] = React.useState<AssetPosition | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = React.useState<boolean>(false);
+
+  // Snackbar for copy feedback
+  const [copySnackbar, setCopySnackbar] = React.useState(false);
+
+  // Razão social fetched from publica.cnpj.ws, keyed by cleaned CNPJ digits
+  const [razaoSocialMap, setRazaoSocialMap] = React.useState<Record<string, string>>({});
+
+  // Broker selection per asset row (keyed by row id, defaults to 'nu')
+  const [brokerSelections, setBrokerSelections] = React.useState<Record<number, string>>({});
+  const getBrokerSuffix = (rowId: number): string => {
+    const id = brokerSelections[rowId] ?? 'nu';
+    return BROKERS.find(b => b.id === id)?.suffix ?? '';
+  };
   
+  // Fetch razão social from Receita Federal public API for each unique CNPJ in the declaration
+  React.useEffect(() => {
+    const declaration = currentSessionData?.generatedDeclaration;
+    if (!declaration) return;
+
+    const uniqueCnpjs = [
+      ...new Set(
+        declaration.assetPositions
+          .map(p => p.cnpj?.replace(/[^\d]/g, ''))
+          .filter((c): c is string => !!c && c.length === 14)
+      ),
+    ];
+
+    if (uniqueCnpjs.length === 0) return;
+
+    let cancelled = false;
+
+    const fetchAll = async () => {
+      for (const cnpj of uniqueCnpjs) {
+        if (cancelled) break;
+        try {
+          const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.razao_social) {
+              // Update incrementally so each name appears as soon as it loads
+              setRazaoSocialMap(prev => ({ ...prev, [cnpj]: data.razao_social }));
+            }
+          }
+        } catch {
+          // silently ignore network errors per CNPJ
+        }
+        await new Promise(r => setTimeout(r, 600));
+      }
+    };
+
+    fetchAll();
+    return () => { cancelled = true; };
+  }, [currentSessionData?.generatedDeclaration]);
+
   // State to track if original DBK file exists
   const [hasOriginalDBK, setHasOriginalDBK] = React.useState<boolean>(false);
   
@@ -356,11 +467,12 @@ export const ResultPage: React.FC = () => {
 
   // Define columns for the Assets DataGrid
   const assetColumns: GridColDef[] = [
-    { field: 'assetCode', headerName: 'Código', width: 120 },
+    { field: 'assetCode', headerName: 'Código', width: 90 },
     { 
       field: 'assetName', 
       headerName: 'Nome', 
-      width: 200,
+      flex: 1,
+      minWidth: 130,
       renderCell: (params) => (
         <Link 
           component="button" 
@@ -372,12 +484,48 @@ export const ResultPage: React.FC = () => {
         </Link>
       )
     },
-    { field: 'assetCategory', headerName: 'Categoria', width: 150 },
+    { field: 'assetCategory', headerName: 'Categoria', width: 90 },
+    {
+      field: 'cnpj',
+      headerName: 'CNPJ',
+      width: 200,
+      renderCell: (params) => {
+        const cnpj = params.value as string | undefined;
+        const key = cnpj?.replace(/[^\d]/g, '') ?? '';
+        const razao = razaoSocialMap[key];
+        return (
+          <Box sx={{ lineHeight: 1.2 }}>
+            <Typography variant="body2">{cnpj ?? '—'}</Typography>
+            {razao && (
+              <Typography variant="caption" color="text.secondary" display="block">
+                {razao}
+              </Typography>
+            )}
+          </Box>
+        );
+      },
+    },
+    {
+      field: '_grupo',
+      headerName: 'Grupo',
+      width: 65,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => getIRPFGrupoCodigo(params.row as AssetPosition).grupo,
+    },
+    {
+      field: '_codigo',
+      headerName: 'Código',
+      width: 65,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => getIRPFGrupoCodigo(params.row as AssetPosition).codigo,
+    },
     { 
       field: 'quantity', 
-      headerName: 'Quantidade', 
+      headerName: 'Qtd', 
       type: 'number',
-      width: 120,
+      width: 100,
       align: 'right',
       headerAlign: 'right'
     },
@@ -385,7 +533,7 @@ export const ResultPage: React.FC = () => {
       field: 'averagePrice', 
       headerName: 'Preço Médio', 
       type: 'number',
-      width: 150,
+      width: 120,
       align: 'right',
       headerAlign: 'right',
       valueFormatter: (params) => formatCurrency(params.value)
@@ -394,10 +542,62 @@ export const ResultPage: React.FC = () => {
       field: 'totalCost', 
       headerName: 'Valor Total', 
       type: 'number',
-      width: 150,
+      width: 120,
       align: 'right',
       headerAlign: 'right',
       valueFormatter: (params) => formatCurrency(params.value)
+    },
+    {
+      field: '_broker',
+      headerName: 'Administrador',
+      flex: 1.2,
+      minWidth: 160,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => {
+        const rowId = params.row.id as number;
+        const selected = brokerSelections[rowId] ?? 'nu';
+        return (
+          <Select
+            value={selected}
+            size="small"
+            variant="outlined"
+            onChange={(e) =>
+              setBrokerSelections(prev => ({ ...prev, [rowId]: e.target.value as string }))
+            }
+            sx={{ width: '100%', fontSize: '0.875rem' }}
+          >
+            {BROKERS.map(b => (
+              <MenuItem key={b.id} value={b.id} sx={{ fontSize: '0.875rem' }}>{b.label}</MenuItem>
+            ))}
+          </Select>
+        );
+      }
+    },
+    {
+      field: '_copy',
+      headerName: 'Discriminação',
+      width: 110,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => {
+        const pos = params.row as AssetPosition;
+        const rowId = params.row.id as number;
+        const text = buildDiscriminacao(pos, getBrokerSuffix(rowId));
+        return (
+          <Tooltip title={text} placement="left">
+            <IconButton
+              size="small"
+              onClick={() => {
+                navigator.clipboard.writeText(text);
+                setCopySnackbar(true);
+              }}
+            >
+              <ContentCopyIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        );
+      }
     }
   ];
   
@@ -422,41 +622,6 @@ export const ResultPage: React.FC = () => {
           A declaração foi gerada com sucesso e está pronta para ser importada no programa da Receita Federal.
         </Typography>
         
-        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 2, mb: 3 }}>        
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleDBKDownloadClick}
-            size="large"
-          >
-            Baixar Arquivo .DBK
-          </Button>
-        </Box>
-
-        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 2, mb: 3 }}>        
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleDownloadExcel}
-            size="large"
-          >
-            Baixar Relatório Excel
-          </Button>
-        </Box>
-        
-        {hasOriginalDBK && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
-            <Button
-              variant="outlined"
-              color="secondary"
-              onClick={handleOriginalDBKDownloadClick}
-              size="medium"
-            >
-              Baixar DBK Original
-            </Button>
-          </Box>
-        )}
-        
         <Divider sx={{ my: 3 }} />
         
         <Typography variant="h6" gutterBottom>
@@ -464,7 +629,8 @@ export const ResultPage: React.FC = () => {
         </Typography>
         
         <Stack spacing={3}>
-          <Box>
+          <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+            <Box sx={{ flex: 1, minWidth: 260 }}>
             <Typography variant="subtitle1" gutterBottom>
               Informações do Contribuinte
             </Typography>
@@ -501,8 +667,8 @@ export const ResultPage: React.FC = () => {
               </Box>
             </Stack>
           </Box>
-          
-          <Box>
+
+          <Box sx={{ flex: 1, minWidth: 260 }}>
             <Typography variant="subtitle1" gutterBottom>
               Resumo Financeiro
             </Typography>
@@ -538,30 +704,33 @@ export const ResultPage: React.FC = () => {
               </Table>
             </TableContainer>
           </Box>
+          </Box>
           
           <Box>
             <Typography variant="subtitle1" gutterBottom>
               Ativos
             </Typography>
             
-            <Box sx={{ height: 400, width: '100%' }}>
+            <Box sx={{ width: '100%' }}>
               <DataGrid
                 rows={assetRows}
                 columns={assetColumns}
+                autoHeight
+                getRowHeight={() => 'auto'}
                 initialState={{
-                  pagination: {
-                    paginationModel: { page: 0, pageSize: 10 },
-                  },
                   sorting: {
-                    sortModel: [{ field: 'assetCode', sort: 'asc' }],
+                    sortModel: [
+                      { field: '_grupo', sort: 'asc' },
+                      { field: '_codigo', sort: 'asc' },
+                    ],
                   },
                 }}
-                pageSizeOptions={[5, 10, 25]}
+                hideFooter
                 checkboxSelection={false}
                 disableRowSelectionOnClick
                 density="standard"
                 sx={{ 
-                  '& .MuiDataGrid-cell': { fontSize: '0.875rem' },
+                  '& .MuiDataGrid-cell': { fontSize: '0.875rem', py: 1, alignItems: 'flex-start' },
                   '& .MuiDataGrid-columnHeader': { fontSize: '0.875rem', fontWeight: 'bold' },
                   '& .negative-value': { color: 'error.main' },
                   '& .positive-value': { color: 'success.main' }
@@ -613,22 +782,29 @@ export const ResultPage: React.FC = () => {
         open={isDetailsOpen}
         onClose={handleDetailsClose}
       />
-      
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
-        <Button
-          variant="outlined"
-          onClick={handleBackClick}
-        >
-          Voltar
-        </Button>
-        
-        <Button
-          variant="outlined"
-          onClick={handleNewDeclarationClick}
-        >
-          Nova Declaração
-        </Button>
-      </Box>
+
+      <Snackbar
+        open={copySnackbar}
+        autoHideDuration={2000}
+        onClose={() => setCopySnackbar(false)}
+        message="Discriminação copiada!"
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
+      {navFooter && createPortal(
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+          <Button variant="outlined" onClick={handleBackClick}>Voltar</Button>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button variant="contained" color="primary" onClick={handleDBKDownloadClick}>Baixar Arquivo .DBK</Button>
+            <Button variant="contained" color="primary" onClick={handleDownloadExcel}>Baixar Relatório Excel</Button>
+            {hasOriginalDBK && (
+              <Button variant="outlined" color="secondary" onClick={handleOriginalDBKDownloadClick}>Baixar DBK Original</Button>
+            )}
+            <Button variant="outlined" onClick={() => setActiveStep(1)}>Reimportar Arquivos</Button>
+            <Button variant="outlined" onClick={handleNewDeclarationClick}>Nova Declaração</Button>
+          </Box>
+        </Box>,
+        navFooter
+      )}
     </Box>
   );
 };

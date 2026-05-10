@@ -13,7 +13,9 @@ import {
 } from '@mui/material';
 import { CloudUpload as CloudUploadIcon } from '@mui/icons-material';
 
+import { createPortal } from 'react-dom';
 import { useAppContext } from '../context/AppContext';
+import { useNavFooter } from '../context/NavFooterContext';
 import { TaxPayerInfo } from '../../core/domain/IRPFDeclaration';
 import { formatCurrency } from '../../utils/formatters';
 
@@ -31,6 +33,7 @@ export const DeclarationPage: React.FC = () => {
     taxPayerInfo: savedTaxPayerInfo 
   } = state;
   const { generateDeclaration, importDBKFile, setActiveStep } = actions;
+  const navFooter = useNavFooter();
   
   // Refs
   const dbkFileInputRef = useRef<HTMLInputElement>(null);
@@ -275,10 +278,22 @@ export const DeclarationPage: React.FC = () => {
                   label="Data de Nascimento"
                   type="date"
                   fullWidth
-                  value={taxPayerInfo.dateOfBirth instanceof Date 
-                    ? taxPayerInfo.dateOfBirth.toISOString().split('T')[0] 
-                    : ''}
-                  onChange={(e) => handleTaxPayerInfoChange('dateOfBirth', e.target.value)}
+                  value={(() => {
+                    const dob = taxPayerInfo.dateOfBirth;
+                    if (dob instanceof Date && !isNaN(dob.getTime())) return dob.toISOString().split('T')[0];
+                    if (typeof dob === 'string' && dob) return (dob as string).substring(0, 10);
+                    return '';
+                  })()}
+                  onChange={(e) => {
+                    const parts = e.target.value.split('-').map(Number);
+                    if (parts.length === 3 && !parts.some(isNaN)) {
+                      // Construct in local time to avoid timezone drift
+                      const date = new Date(parts[0], parts[1] - 1, parts[2]);
+                      setTaxPayerInfo({ ...taxPayerInfo, dateOfBirth: date });
+                    } else {
+                      setTaxPayerInfo({ ...taxPayerInfo, dateOfBirth: e.target.value as unknown as Date });
+                    }
+                  }}
                   InputLabelProps={{ shrink: true }}
                   disabled={isGenerating || isGenerated}
                 />
@@ -409,43 +424,41 @@ export const DeclarationPage: React.FC = () => {
           {generationError && (
             <Alert severity="error">{generationError}</Alert>
           )}
-          
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, mt: 2 }}>
-            <Button
-              variant="outlined"
-              onClick={handleBackClick}
-              disabled={isGenerating}
-            >
-              Voltar
-            </Button>
-            
-            <Box>
-              {!isGenerated ? (
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={handleGenerateClick}
-                  disabled={isGenerating}
-                  startIcon={isGenerating ? <CircularProgress size={20} /> : undefined}
-                >
-                  {isGenerating ? 'Gerando...' : 'Gerar Declaração'}
-                </Button>
-              ) : (
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={() => {
-                    console.log('Visualizar Resultados button clicked');
-                    handleNextPageClick();
-                  }}
-                >
-                  Visualizar Resultados
-                </Button>
-              )}
-            </Box>
-          </Box>
         </Stack>
       </Paper>
+      {navFooter && createPortal(
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+          <Button
+            variant="outlined"
+            onClick={handleBackClick}
+            disabled={isGenerating}
+          >
+            Voltar
+          </Button>
+          <Box>
+            {!isGenerated ? (
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleGenerateClick}
+                disabled={isGenerating}
+                startIcon={isGenerating ? <CircularProgress size={20} /> : undefined}
+              >
+                {isGenerating ? 'Gerando...' : 'Gerar Declaração'}
+              </Button>
+            ) : (
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleNextPageClick}
+              >
+                Visualizar Resultados
+              </Button>
+            )}
+          </Box>
+        </Box>,
+        navFooter
+      )}
       
       {isGenerated && currentSessionData?.generatedDeclaration && (
         <Paper sx={{ p: 3 }}>

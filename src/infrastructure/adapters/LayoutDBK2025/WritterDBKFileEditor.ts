@@ -31,8 +31,8 @@ const layout: { [key: string]: RecordDefinition } = {
         start: 1194,
         end: 1203,
         size: 10,
-        format: 'N'
-      }
+        format: 'N',
+      },
     ],
   },
   '16': {
@@ -45,8 +45,8 @@ const layout: { [key: string]: RecordDefinition } = {
         start: 872,
         end: 881,
         size: 10,
-        format: 'N'
-      }
+        format: 'N',
+      },
     ],
   },
   '27': {
@@ -97,7 +97,7 @@ const layout: { [key: string]: RecordDefinition } = {
       { name: 'NR_CEI_CNO', start: 1132, end: 1143, size: 12, format: 'N' },
       { name: 'IN_BOLSA', start: 1144, end: 1144, size: 1, format: 'N' },
       { name: 'NR_COD_NEGOCIACAO_BOLSA', start: 1145, end: 1164, size: 20, format: 'A' },
-      { name: 'NR_CONTROLE', start: 1165, end: 1174, size: 10, format: 'N' }
+      { name: 'NR_CONTROLE', start: 1165, end: 1174, size: 10, format: 'N' },
     ],
   },
   '23': {
@@ -108,7 +108,7 @@ const layout: { [key: string]: RecordDefinition } = {
       { name: 'NR_CPF', start: 3, end: 13, size: 11, format: 'C' },
       { name: 'NR_COD_ISENTO', start: 14, end: 17, size: 4, format: 'N' },
       { name: 'VR_VALOR', start: 18, end: 30, size: 13, decimals: 2, format: 'N' },
-      { name: 'NR_CONTROLE', start: 31, end: 40, size: 10, format: 'N' }
+      { name: 'NR_CONTROLE', start: 31, end: 40, size: 10, format: 'N' },
     ],
   },
   '24': {
@@ -119,7 +119,7 @@ const layout: { [key: string]: RecordDefinition } = {
       { name: 'NR_CPF', start: 3, end: 13, size: 11, format: 'C' },
       { name: 'NR_COD_EXCLUSIVO', start: 14, end: 17, size: 4, format: 'N' },
       { name: 'VR_VALOR', start: 18, end: 30, size: 13, decimals: 2, format: 'N' },
-      { name: 'NR_CONTROLE', start: 31, end: 40, size: 10, format: 'N' }
+      { name: 'NR_CONTROLE', start: 31, end: 40, size: 10, format: 'N' },
     ],
   },
   '40': {
@@ -135,8 +135,8 @@ const layout: { [key: string]: RecordDefinition } = {
         start: 632,
         end: 641,
         size: 10,
-        format: 'N'
-      }
+        format: 'N',
+      },
     ],
   },
   '42': {
@@ -152,8 +152,8 @@ const layout: { [key: string]: RecordDefinition } = {
         start: 161,
         end: 170,
         size: 10,
-        format: 'N'
-      }
+        format: 'N',
+      },
     ],
   },
   '84': {
@@ -170,7 +170,7 @@ const layout: { [key: string]: RecordDefinition } = {
       { name: 'VR_VALOR', start: 104, end: 116, size: 13, decimals: 2, format: 'N' },
       { name: 'VR_VALOR_13', start: 117, end: 129, size: 13, decimals: 2, format: 'N' },
       { name: 'NR_CHAVE_BEM', start: 130, end: 134, size: 5, format: 'N' },
-      { name: 'NR_CONTROLE', start: 135, end: 144, size: 10, format: 'N' }
+      { name: 'NR_CONTROLE', start: 135, end: 144, size: 10, format: 'N' },
     ],
   },
   '86': {
@@ -187,7 +187,7 @@ const layout: { [key: string]: RecordDefinition } = {
       { name: 'VR_VALOR', start: 104, end: 116, size: 13, decimals: 2, format: 'N' },
       { name: 'NM_DESCRICAO', start: 117, end: 176, size: 60, format: 'C' },
       { name: 'NR_CHAVE_BEM', start: 177, end: 181, size: 5, format: 'N' },
-      { name: 'NR_CONTROLE', start: 182, end: 191, size: 10, format: 'N' }
+      { name: 'NR_CONTROLE', start: 182, end: 191, size: 10, format: 'N' },
     ],
   },
   '88': {
@@ -203,7 +203,7 @@ const layout: { [key: string]: RecordDefinition } = {
       { name: 'NM_NOME', start: 44, end: 103, size: 60, format: 'C' },
       { name: 'VR_VALOR', start: 104, end: 116, size: 13, decimals: 2, format: 'N' },
       { name: 'NR_CHAVE_BEM', start: 117, end: 121, size: 5, format: 'N' },
-      { name: 'NR_CONTROLE', start: 122, end: 131, size: 10, format: 'N' }
+      { name: 'NR_CONTROLE', start: 122, end: 131, size: 10, format: 'N' },
     ],
   },
   T9: {
@@ -236,7 +236,7 @@ const layout: { [key: string]: RecordDefinition } = {
       { name: 'QT_R90', start: 390, end: 394, size: 5, format: 'N' },
       { name: 'QT_R91', start: 395, end: 399, size: 5, format: 'N' },
       { name: 'QT_R92', start: 400, end: 404, size: 5, format: 'N' },
-      { name: 'NR_CONTROLE', start: 440, end: 449, size: 10, format: 'N' }
+      { name: 'NR_CONTROLE', start: 440, end: 449, size: 10, format: 'N' },
     ],
   },
 };
@@ -294,6 +294,7 @@ function formatDate(value: Date | string | undefined): string {
 // These should ideally be defined in a shared domain types file
 
 interface DeclaranteData {
+  cpf?: string; // NR_CPF - Declarant's CPF
   nome?: string;
   tipoLogradouro?: string;
   logradouro?: string;
@@ -439,8 +440,9 @@ export class WritterDBKFileEditor {
         this.lastControlNumber = controlNum;
       }
     });
-    console.log(`Initialized Writer. CPF: ${this.currentCpf || 'Not Found'}, Last Control #: ${this.lastControlNumber}`);
-
+    console.log(
+      `Initialized Writer. CPF: ${this.currentCpf || 'Not Found'}, Last Control #: ${this.lastControlNumber}`
+    );
   }
 
   /**
@@ -464,6 +466,12 @@ export class WritterDBKFileEditor {
         }
       }
     };
+
+    // Set CPF and store it in currentCpf for later use with other records
+    if (data.cpf) {
+      setField('NR_CPF', data.cpf);
+      this.currentCpf = data.cpf; // Store CPF for use with Bens e Direitos and other records
+    }
 
     setField('NM_NOME', data.nome);
     setField('TIP_LOGRA', data.tipoLogradouro);
@@ -722,7 +730,9 @@ export class WritterDBKFileEditor {
     }
 
     if (lineIndex === -1) {
-      console.warn(`R40 record for CPF ${this.currentCpf}, Beneficiary ${targetCpf}, Month ${data.mes} not found. Cannot update.`);
+      console.warn(
+        `R40 record for CPF ${this.currentCpf}, Beneficiary ${targetCpf}, Month ${data.mes} not found. Cannot update.`
+      );
 
       // TODO: Implement logic to ADD a new R40 line if needed (complex due to ordering)
       return false;
@@ -800,7 +810,9 @@ export class WritterDBKFileEditor {
     }
 
     if (lineIndex === -1) {
-      console.warn(`R42 record for CPF ${this.currentCpf}, Beneficiary ${targetCpf}, Month ${mesStr} not found. Cannot update.`);
+      console.warn(
+        `R42 record for CPF ${this.currentCpf}, Beneficiary ${targetCpf}, Month ${mesStr} not found. Cannot update.`
+      );
 
       // TODO: Implement logic to ADD a new R42 line if needed
       return false;
