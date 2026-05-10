@@ -25,7 +25,7 @@ O exemplo dos arquivos de entrada e saída podem ser encontrados em [documentati
 
 A receita federal divulga os manuais abaixo detalhando o arquivo de template oficial suportado pelo programa: [https://www.gov.br/receitafederal/pt-br/centrais-de-conteudo/publicacoes/documentos-tecnicos/dirpf](https://www.gov.br/receitafederal/pt-br/centrais-de-conteudo/publicacoes/documentos-tecnicos/dirpf).
 
-Atualmente tempos suporte ao último template disponível (2023) através dessas classes: [src/infrastructure/adapters/LayoutDBK2025/](./src/infrastructure/adapters/LayoutDBK2025/).
+Atualmente temos suporte ao último template disponível (2023) através dessas classes: [src/infrastructure/adapters/LayoutDBK2025/](./src/infrastructure/adapters/LayoutDBK2025/).
 
 
 ### Teste unitários
