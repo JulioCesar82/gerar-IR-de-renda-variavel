@@ -2,392 +2,275 @@
 
 ## Introdução
 
-Os modelos de domínio representam os conceitos centrais da aplicação e encapsulam a lógica de negócio. Eles são independentes de detalhes de infraestrutura e implementação, permitindo que a lógica de negócio seja testada e mantida de forma isolada.
+Os modelos de domínio representam os conceitos centrais da aplicação e encapsulam a lógica de negócio. Ficam em `src/core/domain/`. Este documento reflete as interfaces TypeScript reais (não um design inicial) — consulte o código-fonte para o detalhe exato de cada campo.
 
-## Transaction
+## Transaction (`src/core/domain/Transaction.ts`)
 
-Representa uma transação (compra ou venda) de um ativo financeiro.
+Representa uma transação (compra ou venda) extraída do arquivo de negociação da B3.
 
 ```typescript
 export interface Transaction {
-  id: string;
   date: Date;
-  assetCode: string;
-  assetCategory: AssetCategory;
-  operationType: OperationType;
-  quantity: number;
-  price: number;
-  totalValue: number;
-  fees?: number;
   year: number;
-  source: string;
+  month: number;
+  type: 'buy' | 'sell';
+  marketType: MarketType;
+  assetCode: string;
+  assetName: string;
+  quantity: number;
+  unitPrice: number;
+  totalValue: number;
+  fees: number;
+  taxes: number;
+  netValue: number;
+  assetCategory: AssetCategory;
+  brokerName: string;
+  brokerCode: string;
+  rowNumber?: number;  // para debug
+  fileName?: string;   // para debug
+}
+
+export enum MarketType {
+  SPOT = 'SPOT',
+  OPTIONS = 'OPTIONS',
+  TERM = 'TERM',
+  FUTURES = 'FUTURES',
+  FRACTIONAL = 'FRACTIONAL',
+  OTHER = 'OTHER',
 }
 
 export enum AssetCategory {
-  STOCK = "STOCK",               // Ações
-  REAL_ESTATE_FUND = "REAL_ESTATE_FUND", // Fundos Imobiliários
-  ETF = "ETF",                   // ETFs
-  BDR = "BDR",                   // BDRs
-  OTHER = "OTHER"                // Outros
-}
-
-export enum OperationType {
-  BUY = "BUY",                   // Compra
-  SELL = "SELL"                  // Venda
+  STOCK = 'STOCK',
+  ETF = 'ETF',
+  FII = 'FII',
+  BDR = 'BDR',
+  OPTION = 'OPTION',
+  DEBENTURE = 'DEBENTURE',
+  TREASURY = 'TREASURY',
+  OTHER = 'OTHER',
 }
 ```
 
-### Atributos
+## SpecialEvent (`src/core/domain/SpecialEvent.ts`)
 
-- **id**: Identificador único da transação
-- **date**: Data da transação
-- **assetCode**: Código do ativo (ex: PETR4, BBAS3)
-- **assetCategory**: Categoria do ativo (ação, FII, ETF, etc.)
-- **operationType**: Tipo de operação (compra ou venda)
-- **quantity**: Quantidade de ativos negociados
-- **price**: Preço unitário do ativo
-- **totalValue**: Valor total da transação (quantidade * preço)
-- **fees**: Taxas e emolumentos (opcional)
-- **year**: Ano da transação
-- **source**: Origem da transação (ex: B3_NEGOTIATION)
-
-## SpecialEvent
-
-Representa um evento especial relacionado a um ativo, como desdobramentos, bonificações, etc.
+Representa um evento especial extraído do arquivo de movimentação da B3 (dividendos, JCP, desdobramentos, etc.).
 
 ```typescript
 export interface SpecialEvent {
-  id: string;
   date: Date;
-  assetCode: string;
-  assetCategory: AssetCategory;
-  eventType: EventType;
-  quantity?: number;
-  price?: number;
-  factor?: number;
-  oldQuantity?: number;
-  newAssetCode?: string;
   year: number;
+  month: number;
+  type: SpecialEventType;
+  originalType?: string;           // texto original da B3, antes do mapeamento
+  operationType?: 'Credito' | 'Debito';
+  assetCode: string;
+  assetName: string;
+  quantity: number;
+  unitPrice: number;
+  totalValue: number;
+  fees: number;
+  taxes: number;
+  netValue: number;
+  assetCategory: string;
+  brokerName: string;
+  brokerCode: string;
+  description?: string;
+  rowNumber?: number;
+  fileName?: string;
+  factor?: number;                 // fator de desdobramento/grupamento
 }
 
-export enum EventType {
-  SPLIT = "SPLIT",               // Desdobramento
-  REVERSE_SPLIT = "REVERSE_SPLIT", // Grupamento
-  BONUS = "BONUS",               // Bonificação
-  SUBSCRIPTION = "SUBSCRIPTION", // Subscrição
-  CONVERSION_IN = "CONVERSION_IN", // Conversão (entrada)
-  CONVERSION_OUT = "CONVERSION_OUT", // Conversão (saída)
-  DIVIDEND = "DIVIDEND",         // Dividendo
-  JCP = "JCP",                   // Juros sobre Capital Próprio
-  INCOME = "INCOME"              // Rendimento (FIIs)
+export enum SpecialEventType {
+  DIVIDEND = 'Dividendo',
+  JCP = 'Juros sobre capital próprio',
+  STOCK_DIVIDEND = 'Bonificação em ações',
+  STOCK_SPLIT = 'Desdobro',
+  REVERSE_SPLIT = 'Grupamento',
+  AMORTIZATION = 'Amortização',
+  INCOME = 'Rendimento',
+  AUCTION = 'Leilão',
+  OTHER = 'Outros',
 }
 ```
 
-### Atributos
+As datas e fatores de eventos que a B3 não informa diretamente (bonificação, desdobramento, grupamento, conversões) são preenchidos manualmente em `src/infrastructure/data` e consultados via `ExternalEventInfoProviderPort` (implementação local, `StaticEventInfoAdapter` — ver [03-portas-interfaces.md](./03-portas-interfaces.md)).
 
-- **id**: Identificador único do evento
-- **date**: Data do evento
-- **assetCode**: Código do ativo
-- **assetCategory**: Categoria do ativo
-- **eventType**: Tipo de evento
-- **quantity**: Quantidade de ativos envolvidos (opcional)
-- **price**: Valor unitário (opcional)
-- **factor**: Fator de ajuste para desdobramentos/grupamentos (opcional)
-- **oldQuantity**: Quantidade anterior (opcional)
-- **newAssetCode**: Novo código do ativo em caso de conversão (opcional)
-- **year**: Ano do evento
-
-## AssetPosition
-
-Representa a posição de um ativo, incluindo seu histórico de transações e eventos.
+## AssetPosition e tipos relacionados (`src/core/domain/AssetPosition.ts`)
 
 ```typescript
 export interface AssetPosition {
   assetCode: string;
+  assetName: string;
   assetCategory: AssetCategory;
+  marketType: MarketType;
   quantity: number;
-  averageCost: number;
+  averagePrice: number;
   totalCost: number;
-  lastUpdate: Date;
-  transactions: Transaction[];
-  specialEvents: SpecialEvent[];
+  currentPrice?: number;
+  currentValue?: number;
+  acquisitionDate: Date;
+  lastUpdateDate: Date;
+  brokerName: string;
+  brokerCode: string;
+  transactionsHistory: TransactionHistory[];
+  cnpj?: string;                   // CNPJ da empresa/FII, quando disponível
+  baseQuantity?: number;           // base para custo médio, exclui eventos sem custo (ex: bonificação)
+  previousYearValue?: number;      // valor em 31/12 do ano anterior
 }
-```
 
-### Atributos
+export interface TransactionHistory {
+  date: Date;
+  type: 'buy' | 'sell' | 'event' | string;
+  description?: string;
+  quantity: number;
+  unitPrice: number;
+  totalValue: number;
+  fees: number;
+  taxes: number;
+  netValue: number;
+  resultingQuantity?: number;
+  resultingAveragePrice?: number;
+  resultingTotalCost?: number;
+}
 
-- **assetCode**: Código do ativo
-- **assetCategory**: Categoria do ativo
-- **quantity**: Quantidade atual do ativo
-- **averageCost**: Preço médio de aquisição
-- **totalCost**: Custo total (quantidade * preço médio)
-- **lastUpdate**: Data da última atualização
-- **transactions**: Lista de transações relacionadas ao ativo
-- **specialEvents**: Lista de eventos especiais relacionados ao ativo
-
-## TradeResult
-
-Representa o resultado de uma operação de venda.
-
-```typescript
 export interface TradeResult {
   assetCode: string;
+  assetName: string;
+  assetCategory: AssetCategory;
+  marketType: MarketType;
   date: Date;
-  soldQuantity: number;
+  month: number;
+  year: number;
+  quantity: number;
+  purchasePrice: number;
+  purchaseCost: number;
   salePrice: number;
   saleValue: number;
-  averageCost: number;
-  costBasis: number;
-  profit: number;
+  fees: number;
+  taxes: number;
+  profitOrLoss: number;
   isExempt: boolean;
-  month: number;
-  year: number;
 }
-```
 
-### Atributos
-
-- **assetCode**: Código do ativo
-- **date**: Data da venda
-- **soldQuantity**: Quantidade vendida
-- **salePrice**: Preço de venda
-- **saleValue**: Valor total da venda
-- **averageCost**: Preço médio de aquisição
-- **costBasis**: Base de custo (averageCost * soldQuantity)
-- **profit**: Lucro ou prejuízo (saleValue - costBasis)
-- **isExempt**: Indica se a operação é isenta de imposto
-- **month**: Mês da venda
-- **year**: Ano da venda
-
-## MonthlyResult
-
-Representa o resultado mensal das operações.
-
-```typescript
 export interface MonthlyResult {
-  year: number;
   month: number;
-  stockResults: {
-    totalSales: number;
-    totalProfit: number;
-    totalLoss: number;
-    netResult: number;
-    isExempt: boolean;
-  };
-  realEstateFundResults: {
-    totalSales: number;
-    totalProfit: number;
-    totalLoss: number;
-    netResult: number;
-  };
-  previousLossCompensation: number;
+  year: number;
+  totalSalesValue: number;
+  totalProfit: number;
+  totalLoss: number;
+  netResult: number;
+  compensatedLoss: number;
   taxableProfit: number;
+  taxRate: number;
   taxDue: number;
+  taxWithheld: number;
+  taxToPay: number;
+  remainingLoss: number;
+  tradeResults: TradeResult[];
+  assetCategory?: AssetCategory;   // categoria predominante, para agrupamento
+  tradeType?: 'Common' | 'DayTrade';
 }
-```
 
-### Atributos
-
-- **year**: Ano do resultado
-- **month**: Mês do resultado
-- **stockResults**: Resultados de operações com ações
-- **realEstateFundResults**: Resultados de operações com FIIs
-- **previousLossCompensation**: Compensação de prejuízos anteriores
-- **taxableProfit**: Lucro tributável
-- **taxDue**: Imposto devido
-
-## IncomeRecord
-
-Representa um registro de rendimento (dividendos, JCP, etc.).
-
-```typescript
 export interface IncomeRecord {
   assetCode: string;
-  assetCategory: AssetCategory;
-  incomeType: IncomeType;
+  assetName: string;
+  assetCategory: string;
+  incomeType: string;              // 'Dividendos', 'Juros sobre Capital Próprio', 'Rendimentos', ...
   date: Date;
-  value: number;
-  taxWithheld?: number;
+  month: number;
   year: number;
-  payerName: string;
-  payerCNPJ: string;
+  grossValue: number;
+  taxWithheld: number;
+  netValue: number;
+  brokerName: string;
+  brokerCode: string;
+  cnpj?: string;
+  sourceName?: string;
+  status?: 'PAGO' | 'CREDITADO_NAO_PAGO';
 }
 
-export enum IncomeType {
-  DIVIDEND = "DIVIDEND",         // Dividendos
-  JCP = "JCP",                   // JCP
-  REAL_ESTATE_FUND_INCOME = "REAL_ESTATE_FUND_INCOME", // Rendimentos de FIIs
-  EXEMPT_PROFIT = "EXEMPT_PROFIT" // Lucro isento em vendas
+export interface Inconsistency {
+  type: 'error' | 'warning';
+  message: string;
+  details: string;
+  assetCode?: string;
+  date?: Date;
+  locationInfo?: string;
 }
+
+// Agrupamento usado como retorno do AssetProcessorPort
+export type ProcessedDataSummary = {
+  assetPositions: AssetPosition[];
+  incomeRecords: IncomeRecord[];
+  monthlyResults: MonthlyResult[];
+};
 ```
 
-### Atributos
-
-- **assetCode**: Código do ativo
-- **assetCategory**: Categoria do ativo
-- **incomeType**: Tipo de rendimento
-- **date**: Data do recebimento
-- **value**: Valor do rendimento
-- **taxWithheld**: Imposto retido na fonte (opcional)
-- **year**: Ano do recebimento
-- **payerName**: Nome do pagador
-- **payerCNPJ**: CNPJ do pagador
-
-## IRPFDeclaration
-
-Representa uma declaração IRPF completa.
+## IRPFDeclaration e tipos relacionados (`src/core/domain/IRPFDeclaration.ts`)
 
 ```typescript
 export interface IRPFDeclaration {
   taxPayerInfo: TaxPayerInfo;
-  assets: Asset[];
-  exemptIncome: ExemptIncome[];
-  exclusiveTaxIncome: ExclusiveTaxIncome[];
-  variableIncome: VariableIncome;
   year: number;
+  assetPositions: AssetPosition[];
+  monthlyResults: MonthlyResult[];
+  incomeRecords: IncomeRecord[];
+  totalTaxDue: number;
+  totalTaxWithheld: number;
+  totalTaxToPay: number;           // positivo = a pagar, negativo = a restituir
+  remainingLoss: number;
+  totalAssetsValue: number;
+  totalIncome: number;
+  generationDate: Date;
+  sections: DeclarationSection[];  // seções já formatadas para geração do .DBK
 }
 
 export interface TaxPayerInfo {
   name: string;
   cpf: string;
-  birthDate?: Date;
-  address?: string;
+  dateOfBirth: Date;
+  address: Address;
+  phone: string;
+  email: string;
+  occupation: string;
 }
 
-export interface Asset {
-  code: string;
+export interface Address {
+  street: string;
+  number: string;
+  complement?: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  country: string;
+}
+
+export interface DeclarationSection {
+  code: string;          // ex: 'BENS', 'REND_ISENTOS'
+  name: string;
   description: string;
-  assetCode: string;
-  quantity: number;
-  acquisitionValue: number;
-  previousYearValue: number;
-  currentYearValue: number;
-  acquisitionDate?: Date;
+  items: DeclarationItem[];
 }
 
-export interface ExemptIncome {
-  code: string;
-  type: ExemptIncomeType;
+export interface DeclarationItem {
+  code: string;           // código IRPF do item (ex: '31', '73', '09', '10', '26')
+  description: string;
   value: number;
-  payerInfo?: {
-    name: string;
-    cnpj: string;
-  };
-}
-
-export enum ExemptIncomeType {
-  DIVIDENDS = "DIVIDENDS",       // Dividendos
-  REAL_ESTATE_FUND_INCOME = "REAL_ESTATE_FUND_INCOME", // Rendimentos de FIIs
-  EXEMPT_STOCK_PROFIT = "EXEMPT_STOCK_PROFIT" // Lucro isento em vendas de ações
-}
-
-export interface ExclusiveTaxIncome {
-  code: string;
-  type: ExclusiveTaxType;
-  grossValue: number;
-  taxWithheld: number;
-  netValue: number;
-  payerInfo?: {
-    name: string;
-    cnpj: string;
-  };
-}
-
-export enum ExclusiveTaxType {
-  JCP = "JCP"                    // Juros sobre Capital Próprio
-}
-
-export interface VariableIncome {
-  monthlyResults: MonthlyVariableIncome[];
-  lossCompensation: {
-    previousYearLoss: number;
-    currentYearLoss: number;
-    compensatedLoss: number;
-    remainingLoss: number;
-  };
-}
-
-export interface MonthlyVariableIncome {
-  month: number;
-  commonOperations: {
-    sales: number;
-    profit: number;
-    loss: number;
-    compensatedLoss: number;
-    netResult: number;
-    taxBase: number;
-    taxRate: number;
-    taxDue: number;
-  };
+  details?: string;
+  cnpj?: string;
+  sourceName?: string;
+  ticker?: string;
+  previousYearValue?: number;
+  month?: number;
+  tradedValue?: number;
+  additionalType?: 'JUROS_CAPITAL_NAO_PAGOS' | 'CREDITO_TRANSITO_NAO_PAGOS' | string;
+  type?: 'DAY_TRADE_ACOES' | 'FII' | 'COMMON_ACOES' | string;
 }
 ```
 
-### Atributos Principais
+## Observações
 
-- **taxPayerInfo**: Informações do contribuinte
-- **assets**: Lista de ativos (Bens e Direitos)
-- **exemptIncome**: Lista de rendimentos isentos
-- **exclusiveTaxIncome**: Lista de rendimentos com tributação exclusiva
-- **variableIncome**: Informações de renda variável
-- **year**: Ano da declaração
-
-## Relacionamentos entre Modelos
-
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Transaction   │     │  SpecialEvent   │     │  IncomeRecord   │
-└────────┬────────┘     └────────┬────────┘     └────────┬────────┘
-         │                       │                       │
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        AssetPosition                            │
-└────────────────────────────────┬────────────────────────────────┘
-                                 │
-                                 │
-         ┌─────────────────────┬─┴───┬─────────────────────┐
-         │                     │     │                     │
-         ▼                     ▼     ▼                     ▼
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   TradeResult   │     │  MonthlyResult  │     │  IRPFDeclaration│
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-```
-
-## Regras de Negócio
-
-### Cálculo de Custo Médio
-
-O custo médio de um ativo é calculado da seguinte forma:
-
-1. Para cada compra, o custo médio é recalculado:
-   ```
-   novoCustoMedio = (custoMedioAtual * quantidadeAtual + precoCompra * quantidadeComprada) / (quantidadeAtual + quantidadeComprada)
-   ```
-
-2. Para cada venda, o custo médio permanece o mesmo, mas a quantidade é reduzida.
-
-3. Para eventos especiais:
-   - Desdobramento: a quantidade aumenta pelo fator de desdobramento, e o custo médio é dividido pelo mesmo fator.
-   - Grupamento: a quantidade diminui pelo fator de grupamento, e o custo médio é multiplicado pelo mesmo fator.
-   - Bonificação: a quantidade aumenta, mas o custo médio é recalculado para diluir o custo total pela nova quantidade.
-
-### Apuração de Resultados
-
-1. Para cada venda, o resultado é calculado:
-   ```
-   resultado = valorVenda - (custoMedio * quantidadeVendida)
-   ```
-
-2. Resultados são agrupados por mês e por tipo de ativo (ações, FIIs).
-
-3. Prejuízos podem ser compensados com lucros futuros do mesmo tipo de ativo.
-
-4. Vendas de ações com valor total mensal até R$ 20.000,00 são isentas de imposto.
-
-### Rendimentos
-
-1. Dividendos são isentos de imposto.
-
-2. JCP tem tributação exclusiva na fonte (15%).
-
-3. Rendimentos de FIIs são isentos para pessoas físicas.
+- Não existem mais `OperationType`, `EventType` (genérico) ou `AssetCategory.REAL_ESTATE_FUND` — foram substituídos por `type: 'buy'|'sell'`, `SpecialEventType` e `AssetCategory.FII`, respectivamente.
+- Os campos `fees`, `taxes` e `netValue` aparecem tanto em `Transaction` quanto em `SpecialEvent` e `TransactionHistory` — refletem valores já líquidos de custos da B3, não apenas o valor bruto.
+- `AssetPosition.cnpj` é opcional: é preenchido quando disponível, mas não há uma busca automática confiável embutida por padrão (ver [07-seguranca.md](./07-seguranca.md) sobre a exceção de busca de razão social).

@@ -2,266 +2,104 @@
 
 ## Introdução
 
-Na arquitetura hexagonal, as portas são interfaces que definem como o domínio da aplicação se comunica com o mundo exterior. Elas estabelecem contratos claros entre o domínio e os adaptadores, permitindo que diferentes implementações sejam substituídas sem afetar a lógica de negócio.
+Na arquitetura hexagonal, as portas são interfaces que definem como o domínio da aplicação se comunica com o mundo exterior. Ficam em `src/core/interfaces/`. Este documento reflete as interfaces reais do código.
 
 ## FileParserPort
 
-Interface responsável por analisar arquivos da B3 e convertê-los em objetos de domínio.
+Analisa arquivos da B3 e os converte em objetos de domínio.
 
 ```typescript
 export interface FileParserPort {
-  /**
-   * Parse a negotiation file (Excel) from B3
-   * @param file The file to parse
-   * @returns A promise that resolves to an array of transactions
-   */
   parseNegotiationFile(file: File): Promise<Transaction[]>;
-  
-  /**
-   * Parse a movement file (Excel) from B3
-   * @param file The file to parse
-   * @returns A promise that resolves to an array of special events
-   */
   parseMovementFile(file: File): Promise<SpecialEvent[]>;
 }
 ```
 
-### Responsabilidades
-
-- Analisar arquivos de negociação da B3 e extrair transações
-- Analisar arquivos de movimentação da B3 e extrair eventos especiais
-- Validar o formato dos arquivos
-- Mapear dados dos arquivos para os modelos de domínio
-
-### Implementações
-
-- **B3FileParser**: Implementação para arquivos Excel da B3
+**Implementação:** `B3FileParser` (`src/infrastructure/adapters/B3FileParser.ts`).
 
 ## AssetProcessorPort
 
-Interface responsável pelo processamento de ativos, cálculo de posições, resultados e rendimentos.
+Processa transações e eventos especiais, calculando posições, resultados e rendimentos.
 
 ```typescript
 export interface AssetProcessorPort {
-  /**
-   * Process transactions and special events to calculate asset positions
-   * @param transactions The transactions to process
-   * @param specialEvents The special events to process
-   * @param initialPositions Optional initial positions
-   * @returns A promise that resolves to an array of asset positions
-   */
+  analyzeTransactionsAndSpecialEvents(
+    transactions: Transaction[],
+    specialEvents: SpecialEvent[],
+    selectedYear: number,
+    includeInitialPosition: boolean
+  ): Promise<ProcessedDataSummary>;
+
   processAssets(
-    transactions: Transaction[], 
+    transactions: Transaction[],
     specialEvents: SpecialEvent[],
     initialPositions?: AssetPosition[]
   ): Promise<AssetPosition[]>;
-  
-  /**
-   * Calculate trade results from asset positions
-   * @param assetPositions The asset positions to calculate trade results from
-   * @returns A promise that resolves to an array of trade results
-   */
+
   calculateTradeResults(
-    assetPositions: AssetPosition[]
+    assetPositions: AssetPosition[],
+    selectedYear: number
   ): Promise<TradeResult[]>;
-  
-  /**
-   * Calculate monthly results from trade results
-   * @param tradeResults The trade results to calculate monthly results from
-   * @param previousYearLoss Optional previous year loss to compensate
-   * @returns A promise that resolves to an array of monthly results
-   */
+
   calculateMonthlyResults(
     tradeResults: TradeResult[],
-    previousYearLoss?: number
+    selectedYear: number
   ): Promise<MonthlyResult[]>;
-  
-  /**
-   * Extract income records from special events
-   * @param specialEvents The special events to extract income records from
-   * @returns A promise that resolves to an array of income records
-   */
-  extractIncomeRecords(
-    specialEvents: SpecialEvent[]
-  ): Promise<IncomeRecord[]>;
-  
-  /**
-   * Validate data for inconsistencies
-   * @param transactions The transactions to validate
-   * @param specialEvents The special events to validate
-   * @returns A promise that resolves to an array of inconsistencies
-   */
+
+  extractIncomeRecords(specialEvents: SpecialEvent[]): Promise<IncomeRecord[]>;
+
   validateData(
     transactions: Transaction[],
     specialEvents: SpecialEvent[]
   ): Promise<Inconsistency[]>;
 }
-
-/**
- * Represents an inconsistency in the data
- */
-export interface Inconsistency {
-  type: 'error' | 'warning';
-  message: string;
-  details: string;
-  assetCode?: string;
-  date?: Date;
-}
 ```
 
-### Responsabilidades
-
-- Processar transações e eventos especiais para calcular posições de ativos
-- Calcular resultados de operações de venda
-- Calcular resultados mensais e imposto devido
-- Extrair registros de rendimentos de eventos especiais
-- Validar dados e identificar inconsistências
-
-### Implementações
-
-- **DefaultAssetProcessor**: Implementação padrão com lógica de negócio
+**Implementação:** `AssetProcessor` (`src/infrastructure/adapters/AssetProcessor.ts`). `analyzeTransactionsAndSpecialEvents` é o método de entrada usado pela UI — orquestra os demais métodos e devolve um `ProcessedDataSummary` já consolidado.
 
 ## IRPFGeneratorPort
 
-Interface responsável pela geração de declarações IRPF e arquivos .DBK.
+Gera a declaração IRPF e o arquivo final a partir dos dados processados.
 
 ```typescript
 export interface IRPFGeneratorPort {
-  /**
-   * Generate an IRPF declaration from asset positions, monthly results, and income records
-   * @param assetPositions The asset positions to generate the declaration from
-   * @param monthlyResults The monthly results to generate the declaration from
-   * @param incomeRecords The income records to generate the declaration from
-   * @param taxPayerInfo The taxpayer information
-   * @param year The year of the declaration
-   * @param includeInitialPosition Whether to include the initial position
-   * @returns A promise that resolves to an IRPF declaration
-   */
   generateDeclaration(
-    assetPositions: AssetPosition[],
-    monthlyResults: MonthlyResult[],
-    incomeRecords: IncomeRecord[],
+    processedDataSummary: ProcessedDataSummary,
     taxPayerInfo: TaxPayerInfo,
-    year: number,
-    includeInitialPosition: boolean
+    year: number
   ): Promise<IRPFDeclaration>;
-  
-  /**
-   * Generate a .DBK file from an IRPF declaration
-   * @param declaration The IRPF declaration to generate the file from
-   * @returns A promise that resolves to a Blob containing the .DBK file
-   */
-  generateDBKFile(
-    declaration: IRPFDeclaration
-  ): Promise<Blob>;
+
+  generateFile(declaration: IRPFDeclaration, originalContent?: string): Promise<Blob>;
 }
 ```
 
-### Responsabilidades
+**Implementação:** `DBKFileGenerator` (`src/infrastructure/adapters/DBKFileGenerator.ts`), que usa `WritterDBKFileEditor` (`src/infrastructure/adapters/LayoutDBK2025/`) internamente. `originalContent` permite basear a geração em um `.DBK` previamente importado, preservando campos não gerenciados pela aplicação.
 
-- Gerar declaração IRPF a partir de posições de ativos, resultados mensais e registros de rendimentos
-- Gerar arquivo .DBK a partir da declaração IRPF
-- Formatar dados conforme especificações da Receita Federal
-
-### Implementações
-
-- **DefaultIRPFGenerator**: Implementação padrão para geração de declarações e arquivos .DBK
+Há também `DBKFileParser` (`src/infrastructure/adapters/DBKFileParser.ts`), que usa `ReaderDBKFileEditor` para extrair `TaxPayerInfo` (e, opcionalmente, dados parciais da declaração) de um `.DBK` existente — usado na funcionalidade "Importar Declaração Pré-Preenchida".
 
 ## StoragePort
 
-Interface responsável pelo armazenamento e recuperação de dados.
+Armazena e recupera dados de sessão localmente.
 
 ```typescript
 export interface StoragePort {
-  /**
-   * Save a session
-   * @param sessionId The ID of the session
-   * @param description Optional description of the session
-   * @param year The year of the session
-   * @returns A promise that resolves when the session is saved
-   */
-  saveSession(
-    sessionId: string,
-    description: string | undefined,
-    year: number
-  ): Promise<void>;
-  
-  /**
-   * Save transactions
-   * @param sessionId The ID of the session
-   * @param transactions The transactions to save
-   * @returns A promise that resolves when the transactions are saved
-   */
-  saveTransactions(
-    sessionId: string,
-    transactions: Transaction[]
-  ): Promise<void>;
-  
-  /**
-   * Save special events
-   * @param sessionId The ID of the session
-   * @param specialEvents The special events to save
-   * @returns A promise that resolves when the special events are saved
-   */
-  saveSpecialEvents(
-    sessionId: string,
-    specialEvents: SpecialEvent[]
-  ): Promise<void>;
-  
-  /**
-   * Save processed data
-   * @param sessionId The ID of the session
-   * @param assetPositions The asset positions to save
-   * @param monthlyResults The monthly results to save
-   * @param incomeRecords The income records to save
-   * @returns A promise that resolves when the processed data is saved
-   */
+  saveSession(sessionId: string, description: string | undefined, year: number): Promise<void>;
+  saveOriginalDBK(sessionId: string, content: string): Promise<void>;
+  getOriginalDBK(sessionId: string): Promise<string | null>;
+  saveTransactions(sessionId: string, transactions: Transaction[]): Promise<void>;
+  saveSpecialEvents(sessionId: string, specialEvents: SpecialEvent[]): Promise<void>;
   saveProcessedData(
     sessionId: string,
     assetPositions: AssetPosition[],
     monthlyResults: MonthlyResult[],
     incomeRecords: IncomeRecord[]
   ): Promise<void>;
-  
-  /**
-   * Save a declaration
-   * @param sessionId The ID of the session
-   * @param declaration The declaration to save
-   * @returns A promise that resolves when the declaration is saved
-   */
-  saveDeclaration(
-    sessionId: string,
-    declaration: IRPFDeclaration
-  ): Promise<void>;
-  
-  /**
-   * Get all sessions
-   * @returns A promise that resolves to an array of sessions
-   */
+  saveDeclaration(sessionId: string, declaration: IRPFDeclaration): Promise<void>;
   getSessions(): Promise<StoredSession[]>;
-  
-  /**
-   * Get a session by ID
-   * @param sessionId The ID of the session
-   * @returns A promise that resolves to the session data
-   */
-  getSessionData(
-    sessionId: string
-  ): Promise<StoredData | null>;
-  
-  /**
-   * Delete a session
-   * @param sessionId The ID of the session
-   * @returns A promise that resolves when the session is deleted
-   */
-  deleteSession(
-    sessionId: string
-  ): Promise<void>;
+  getSessionData(sessionId: string): Promise<StoredData | null>;
+  deleteSession(sessionId: string): Promise<void>;
 }
 
-/**
- * Represents a stored session
- */
 export interface StoredSession {
   id: string;
   createdAt: Date;
@@ -271,44 +109,71 @@ export interface StoredSession {
   status: SessionStatus;
 }
 
-/**
- * Represents stored data
- */
 export interface StoredData {
   sessionId: string;
   transactions: Transaction[];
   specialEvents: SpecialEvent[];
   initialPositions?: AssetPosition[];
-  processedData?: {
-    assetPositions: AssetPosition[];
-    monthlyResults: MonthlyResult[];
-    incomeRecords: IncomeRecord[];
-  };
+  processedData?: ProcessedDataSummary;
   generatedDeclaration?: IRPFDeclaration;
 }
 
-/**
- * Status of a session
- */
 export enum SessionStatus {
-  DRAFT = "DRAFT",               // Rascunho (incompleto)
-  PROCESSED = "PROCESSED",       // Processado
-  GENERATED = "GENERATED",       // Arquivo gerado
-  ARCHIVED = "ARCHIVED"          // Arquivado
+  DRAFT = 'DRAFT',
+  PROCESSED = 'PROCESSED',
+  GENERATED = 'GENERATED',
+  ARCHIVED = 'ARCHIVED',
 }
 ```
 
-### Responsabilidades
+**Implementação:** `IndexedDBStorage` (`src/infrastructure/adapters/IndexedDBStorage.ts`), usando IndexedDB.
 
-- Salvar e recuperar sessões
-- Salvar e recuperar transações e eventos especiais
-- Salvar e recuperar dados processados
-- Salvar e recuperar declarações
-- Gerenciar o ciclo de vida das sessões
+## ExternalTickerInfoProviderPort
 
-### Implementações
+Busca dados complementares de um ativo (hoje, principalmente o CNPJ) a partir do ticker.
 
-- **IndexedDBStorage**: Implementação usando IndexedDB para armazenamento local
+```typescript
+export interface StockInfo {
+  cnpj: string;
+  name: string;
+}
+
+export interface ExternalTickerInfoProviderPort {
+  getStockInfo(ticker: string): Promise<StockInfo | null>;
+}
+```
+
+**Implementações existentes** (`src/infrastructure/adapters/ExternalTickerInfoProviderPort/`):
+
+- `StaticTickerInfoAdapter` — local, sem rede. **É a implementação atualmente conectada no `Container`** de injeção de dependências.
+- `BrapiAdapter`, `BrasilApiAdapter`, `CNPJInfoAdapter`, `Investidor10ScraperAdapter` — consultam APIs externas (brapi.dev, brasilapi.com.br, cnpj.info, investidor10.com.br respectivamente). Existem no código mas **não estão conectadas no `Container`** — são candidatas a implementação alternativa, não código morto a esmo, mas também não utilizadas em produção hoje.
+
+Separadamente, a tela de resultados (`ResultPage.tsx`) faz uma chamada direta (fora dessa porta) à BrasilAPI para exibir a razão social — ver [07-seguranca.md](./07-seguranca.md).
+
+## ExternalEventInfoProviderPort
+
+Busca dados de eventos especiais que a B3 não informa (datas e fatores de desdobramento, grupamento, bonificação, conversão).
+
+```typescript
+export interface EventInfo {
+  ticker: string;
+  type: string;
+  date: Date;
+  factor: number;
+}
+
+export interface ExternalEventInfoProviderPort {
+  getEventsForAsset(ticker: string, year?: number): Promise<any[]>;
+  getEventFactor(ticker: string, eventType: string, eventDate: Date): Promise<number | null>;
+  getSpecialEventAveragePrice(
+    ticker: string,
+    eventType: string,
+    eventDate: Date
+  ): Promise<number | null>;
+}
+```
+
+**Implementação:** `StaticEventInfoAdapter` (`src/infrastructure/adapters/StaticEventInfoAdapter.ts`) — apesar do nome "External", é uma implementação **local**, que lê os dados preenchidos manualmente em `src/infrastructure/data` (não faz chamadas de rede).
 
 ## Relacionamentos entre Portas
 
@@ -318,40 +183,20 @@ export enum SessionStatus {
 └───────────────────────────────┬─────────────────────────────────┘
                                 │
                                 ▼
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  FileParserPort │     │AssetProcessorPort│     │IRPFGeneratorPort│
-└────────┬────────┘     └────────┬────────┘     └────────┬────────┘
-         │                       │                       │
-         │                       │                       │
-         ▼                       ▼                       ▼
+┌─────────────┐ ┌──────────────────┐ ┌──────────────────┐ ┌───────────────┐
+│FileParserPort│ │AssetProcessorPort│ │IRPFGeneratorPort │ │  StoragePort  │
+└──────┬───────┘ └────────┬─────────┘ └────────┬─────────┘ └───────┬───────┘
+       │                  │                    │                   │
+       │         ┌────────┴─────────┐          │                   │
+       │         │ ExternalTicker/  │          │                   │
+       │         │ EventInfoProvider│          │                   │
+       │         └──────────────────┘          │                   │
+       ▼                  ▼                    ▼                   ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                          StoragePort                            │
+│                            Domínio                               │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Princípios de Design
 
-### Inversão de Dependência
-
-As portas seguem o princípio de inversão de dependência (Dependency Inversion Principle), onde:
-
-1. Módulos de alto nível não dependem de módulos de baixo nível. Ambos dependem de abstrações.
-2. Abstrações não dependem de detalhes. Detalhes dependem de abstrações.
-
-### Interface Segregation
-
-As portas são projetadas seguindo o princípio de segregação de interfaces (Interface Segregation Principle), onde:
-
-1. Nenhum cliente deve ser forçado a depender de métodos que não utiliza.
-2. Interfaces grandes são divididas em interfaces menores e mais específicas.
-
-### Single Responsibility
-
-Cada porta tem uma única responsabilidade bem definida, seguindo o princípio de responsabilidade única (Single Responsibility Principle).
-
-## Benefícios
-
-- **Testabilidade**: As portas permitem que os componentes sejam testados de forma isolada, usando mocks ou stubs.
-- **Flexibilidade**: Diferentes implementações podem ser substituídas sem afetar o domínio.
-- **Manutenibilidade**: Separação clara de responsabilidades facilita a manutenção.
-- **Evolução**: Novas funcionalidades podem ser adicionadas sem modificar o código existente.
+As portas seguem inversão de dependência e segregação de interfaces: o domínio depende apenas destas abstrações, e cada porta tem uma responsabilidade única. Isso permite trocar `StaticTickerInfoAdapter` por `BrapiAdapter`, por exemplo, sem alterar `AssetProcessor` ou a UI.

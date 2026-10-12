@@ -32,6 +32,8 @@ As portas definem as operações que a aplicação pode realizar:
 - **AssetProcessorPort**: Interface para processamento de ativos
 - **IRPFGeneratorPort**: Interface para geração de arquivos IRPF
 - **StoragePort**: Interface para armazenamento e recuperação de dados
+- **ExternalTickerInfoProviderPort**: Interface para obter dados de um ativo (ex: CNPJ) a partir do ticker
+- **ExternalEventInfoProviderPort**: Interface para obter dados de eventos especiais (datas, fatores) não informados pela B3
 
 ### Adaptadores
 
@@ -41,6 +43,8 @@ Os adaptadores implementam as interfaces definidas pelas portas:
 - **DBKFileParser**: Implementação de `FileParserPort` para arquivos `.DBK` da Receita Federal.
 - **DBKFileGenerator**: Implementação de `IRPFGeneratorPort` para gerar o arquivo `.DBK` final.
 - **IndexedDBStorage**: Implementação de `StoragePort` usando IndexedDB.
+- **StaticTickerInfoAdapter** / **StaticEventInfoAdapter**: Implementações padrão (locais, sem rede) de `ExternalTickerInfoProviderPort` e `ExternalEventInfoProviderPort`, usando os dados preenchidos manualmente em `src/infrastructure/data`.
+- **BrapiAdapter**, **BrasilApiAdapter**, **CNPJInfoAdapter**, **Investidor10ScraperAdapter**: Implementações alternativas de `ExternalTickerInfoProviderPort` que consultam APIs externas (brapi.dev, brasilapi.com.br, cnpj.info, investidor10.com.br). Atualmente não estão conectadas no `Container` de injeção de dependências.
 
 ### Interface de Usuário
 
@@ -99,6 +103,8 @@ A interface de usuário é construída com React e Tailwind CSS:
 
 ## Considerações de Segurança
 
-- Processamento totalmente local (dados não saem do computador do usuário)
-- Sem dependência de serviços externos
+- O processamento de transações, cálculo de posições e geração do `.DBK` é feito localmente no navegador
+- Exceção: a página de resultados busca a razão social das empresas a partir do CNPJ (dado já público) na API pública BrasilAPI (`brasilapi.com.br`), para exibição na tela
 - Sem armazenamento de dados sensíveis em servidores remotos
+
+Veja [07-seguranca.md](./07-seguranca.md) para detalhes e limitações dessa abordagem.

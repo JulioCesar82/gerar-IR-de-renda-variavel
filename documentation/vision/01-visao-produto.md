@@ -75,6 +75,7 @@ O Gerador de Arquivo IRPF para Investimentos B3 resolve esses problemas através
 1. **Upload de Extratos B3**
    - Importação de arquivos de negociação (compras e vendas)
    - Importação de arquivos de movimentação (eventos corporativos)
+   - Importação de uma declaração `.DBK` anterior, para pré-preencher automaticamente os dados do contribuinte (disponível desde a v1.1.0)
 
 2. **Processamento de Dados**
    - Cálculo de custo médio de ativos

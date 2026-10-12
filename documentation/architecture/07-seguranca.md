@@ -9,7 +9,7 @@ A segurança é um aspecto fundamental da aplicação Gerador de Arquivo IRPF pa
 A abordagem de segurança da aplicação é baseada nos seguintes princípios:
 
 1. **Privacidade por Design**: A privacidade é considerada desde o início do desenvolvimento, não como um complemento.
-2. **Processamento Local**: Todos os dados são processados localmente no dispositivo do usuário, sem envio para servidores externos.
+2. **Processamento Local**: Transações, cálculos de custo médio/resultado e geração do arquivo `.DBK` são processados localmente no dispositivo do usuário. Exceção: a tela de resultados envia o CNPJ (dado público) de cada empresa à API pública BrasilAPI para obter a razão social exibida na interface — ver "Exceção: Consulta de Razão Social" abaixo.
 3. **Minimização de Dados**: Apenas os dados necessários são coletados e armazenados.
 4. **Transparência**: O usuário tem visibilidade sobre quais dados são utilizados e como são processados.
 5. **Segurança por Padrão**: Configurações seguras são aplicadas por padrão, sem necessidade de ação do usuário.
@@ -34,21 +34,13 @@ A abordagem de segurança da aplicação é baseada nos seguintes princípios:
 
 ### Processamento Local
 
-A aplicação é projetada para funcionar inteiramente no navegador do usuário, sem necessidade de enviar dados para servidores externos. Isso elimina riscos associados à transmissão de dados pela internet e ao armazenamento em servidores remotos.
+O cálculo de posições, custo médio, resultados e a geração do `.DBK` (classe `AssetProcessor`, que implementa `AssetProcessorPort`) ocorrem inteiramente no navegador do usuário, sem chamadas de rede.
 
-```typescript
-// Exemplo de processamento local
-export class DefaultAssetProcessor implements AssetProcessorPort {
-  async processAssets(
-    transactions: Transaction[], 
-    specialEvents: SpecialEvent[],
-    initialPositions?: AssetPosition[]
-  ): Promise<AssetPosition[]> {
-    // Todo o processamento ocorre localmente, sem chamadas a APIs externas
-    // ...
-  }
-}
-```
+### Exceção: Consulta de Razão Social
+
+A tela de resultados (`ResultPage.tsx`) faz uma chamada `fetch` direta para `https://brasilapi.com.br/api/cnpj/v1/{cnpj}` para obter a razão social de cada empresa, usando apenas o CNPJ (dado público) extraído dos dados já processados localmente. Nenhum dado de transação, posição ou resultado fiscal é enviado — apenas o CNPJ da empresa.
+
+Vale notar que essa chamada é feita diretamente no componente de UI, sem passar por um adaptador/porta (`ExternalTickerInfoProviderPort`). Existem adaptadores para esse fim (`BrapiAdapter`, `BrasilApiAdapter`, `CNPJInfoAdapter`, `Investidor10ScraperAdapter`), mas nenhum está conectado no `Container` de injeção de dependências — o container usa apenas `StaticTickerInfoAdapter`, que é local. Padronizar essa consulta através da porta é um débito técnico em aberto.
 
 ### Armazenamento Seguro
 
@@ -66,25 +58,18 @@ export class IndexedDBStorage implements StoragePort {
 
 ### Validação de Entrada
 
-Todas as entradas do usuário e dados de arquivos são validados antes do processamento, para prevenir ataques de injeção e garantir a integridade dos dados.
+Entradas do usuário e dados extraídos dos arquivos Excel/`.DBK` são validados antes do processamento, para evitar dados inconsistentes. A validação é feita manualmente nos próprios adaptadores (`B3FileParser`, `DBKFileParser`), não com uma biblioteca de schema como `zod` — **`zod` não é uma dependência deste projeto**; o exemplo abaixo é apenas ilustrativo de como essa validação poderia ser formalizada.
 
 ```typescript
-// Exemplo de validação de entrada
+// Exemplo ilustrativo (não implementado) de validação com uma lib de schema
 export function validateTransaction(transaction: unknown): Transaction {
   const schema = z.object({
-    id: z.string(),
-    date: z.date(),
     assetCode: z.string().min(1).max(10),
-    assetCategory: z.nativeEnum(AssetCategory),
-    operationType: z.nativeEnum(OperationType),
     quantity: z.number().positive(),
-    price: z.number().positive(),
+    unitPrice: z.number().positive(),
     totalValue: z.number(),
-    fees: z.number().optional(),
-    year: z.number().int().min(1900).max(2100),
-    source: z.string()
   });
-  
+
   return schema.parse(transaction);
 }
 ```
@@ -103,11 +88,11 @@ function sanitizeAssetCode(assetCode: string): string {
 
 ### Proteção Contra XSS
 
-A aplicação implementa medidas para prevenir ataques de Cross-Site Scripting (XSS), como a sanitização de conteúdo HTML e o uso de políticas de segurança de conteúdo (CSP).
+React escapa por padrão o conteúdo renderizado, reduzindo o risco de XSS. **Não há, hoje, uma Content Security Policy (CSP) configurada em `index.html`.** O exemplo abaixo é uma sugestão de política a adotar — ao implementá-la, lembrar de liberar `connect-src` para `brasilapi.com.br` (consulta de razão social).
 
 ```html
-<!-- Exemplo de CSP no arquivo index.html -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'">
+<!-- Sugestão de CSP para index.html (ainda não implementada) -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://brasilapi.com.br">
 ```
 
 ### Gerenciamento de Dependências
@@ -130,9 +115,9 @@ A aplicação foi projetada para estar em conformidade com regulamentos de priva
 
 ### LGPD (Lei Geral de Proteção de Dados)
 
-- **Minimização de Dados**: Apenas os dados necessários são coletados e processados.
+- **Minimização de Dados**: Apenas os dados necessários são coletados e processados. A única informação enviada a um serviço externo é o CNPJ da empresa (dado público, não pessoal) para consulta de razão social.
 - **Finalidade Específica**: Os dados são utilizados apenas para a finalidade declarada.
-- **Transparência**: O usuário é informado sobre quais dados são utilizados e como são processados.
+- **Transparência**: O usuário é informado sobre quais dados são utilizados e como são processados (ver [01-visao-geral.md](./01-visao-geral.md#considerações-de-segurança)).
 - **Segurança**: Medidas técnicas e organizacionais são implementadas para proteger os dados.
 
 ### Considerações Fiscais
@@ -203,22 +188,7 @@ function logSecurityEvent(event: SecurityEvent): void {
 
 ### Análise Estática de Código
 
-O código é analisado estaticamente para identificar possíveis vulnerabilidades, usando ferramentas como ESLint com regras de segurança.
-
-```json
-// .eslintrc.json
-{
-  "extends": [
-    "eslint:recommended",
-    "plugin:@typescript-eslint/recommended",
-    "plugin:security/recommended"
-  ],
-  "plugins": [
-    "@typescript-eslint",
-    "security"
-  ]
-}
-```
+O projeto usa ESLint (`eslint:recommended`, `@typescript-eslint/recommended`, regras de React/React Hooks — ver configuração em `package.json`). **O plugin `eslint-plugin-security` não está instalado**; adotá-lo é uma melhoria possível, não algo já implementado.
 
 ### Testes de Penetração
 
