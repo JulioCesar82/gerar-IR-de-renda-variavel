@@ -88,7 +88,7 @@ O primeiro passo no fluxo de dados é o parsing dos arquivos da B3. Esta etapa �
 
 ### 1.1. Parsing de Arquivos DBK
 
-Alternativamente, o usuário pode importar um arquivo DBK da Receita Federal para preencher automaticamente os dados do contribuinte. Esta etapa é realizada pelo adaptador `DBKParser`.
+Alternativamente, o usuário pode importar um arquivo DBK da Receita Federal para preencher automaticamente os dados do contribuinte. Esta etapa é realizada pelo adaptador `DBKFileParser` (`src/infrastructure/adapters/DBKFileParser.ts`), que usa `ReaderDBKFileEditor` (`LayoutDBK2025/`) internamente.
 
 **Entradas:**
 - Arquivo DBK da Receita Federal (.dbk)
@@ -161,7 +161,7 @@ Os dados processados são recuperados do armazenamento e apresentados ao usuári
 
 ### 5. Geração de Arquivo IRPF
 
-Finalmente, os dados processados são utilizados para gerar um arquivo no formato aceito pela Receita Federal. Esta etapa é realizada pelo adaptador `IRPFGenerator`, que implementa a interface `IRPFGeneratorPort`.
+Finalmente, os dados processados são utilizados para gerar um arquivo no formato aceito pela Receita Federal. Esta etapa é realizada pelo adaptador `DBKFileGenerator`, que implementa a interface `IRPFGeneratorPort` (usando `WritterDBKFileEditor` internamente).
 
 **Entradas:**
 - Lista de posições de ativos (`AssetPosition[]`)
@@ -180,221 +180,14 @@ Finalmente, os dados processados são utilizados para gerar um arquivo no format
 
 ## Modelo de Dados
 
-### Modelos de Domínio
-
-#### Transaction
-
-Representa uma transação (compra ou venda) de um ativo financeiro.
-
-```typescript
-interface Transaction {
-  id: string;
-  date: Date;
-  assetCode: string;
-  assetCategory: AssetCategory;
-  operationType: OperationType;
-  quantity: number;
-  price: number;
-  totalValue: number;
-  fees?: number;
-  year: number;
-  source: string;
-}
-
-enum AssetCategory {
-  STOCK = "STOCK",
-  REAL_ESTATE_FUND = "REAL_ESTATE_FUND",
-  ETF = "ETF",
-  BDR = "BDR",
-  OTHER = "OTHER"
-}
-
-enum OperationType {
-  BUY = "BUY",
-  SELL = "SELL"
-}
-```
-
-#### SpecialEvent
-
-Representa um evento especial relacionado a um ativo, como desdobramentos, bonificações, etc.
-
-```typescript
-interface SpecialEvent {
-  id: string;
-  date: Date;
-  assetCode: string;
-  assetCategory: AssetCategory;
-  eventType: EventType;
-  quantity?: number;
-  price?: number;
-  factor?: number;
-  oldQuantity?: number;
-  newAssetCode?: string;
-  year: number;
-}
-
-enum EventType {
-  SPLIT = "SPLIT",
-  REVERSE_SPLIT = "REVERSE_SPLIT",
-  BONUS = "BONUS",
-  SUBSCRIPTION = "SUBSCRIPTION",
-  CONVERSION_IN = "CONVERSION_IN",
-  CONVERSION_OUT = "CONVERSION_OUT",
-  DIVIDEND = "DIVIDEND",
-  JCP = "JCP",
-  INCOME = "INCOME"
-}
-```
-
-#### AssetPosition
-
-Representa a posição de um ativo, incluindo seu histórico de transações e eventos.
-
-```typescript
-interface AssetPosition {
-  assetCode: string;
-  assetCategory: AssetCategory;
-  quantity: number;
-  averageCost: number;
-  totalCost: number;
-  lastUpdate: Date;
-  transactions: Transaction[];
-  specialEvents: SpecialEvent[];
-}
-```
-
-#### TradeResult
-
-Representa o resultado de uma operação de venda.
-
-```typescript
-interface TradeResult {
-  assetCode: string;
-  date: Date;
-  soldQuantity: number;
-  salePrice: number;
-  saleValue: number;
-  averageCost: number;
-  costBasis: number;
-  profit: number;
-  isExempt: boolean;
-  month: number;
-  year: number;
-}
-```
-
-#### MonthlyResult
-
-Representa o resultado mensal das operações.
-
-```typescript
-interface MonthlyResult {
-  year: number;
-  month: number;
-  stockResults: {
-    totalSales: number;
-    totalProfit: number;
-    totalLoss: number;
-    netResult: number;
-    isExempt: boolean;
-  };
-  realEstateFundResults: {
-    totalSales: number;
-    totalProfit: number;
-    totalLoss: number;
-    netResult: number;
-  };
-  previousLossCompensation: number;
-  taxableProfit: number;
-  taxDue: number;
-}
-```
-
-#### IncomeRecord
-
-Representa um registro de rendimento (dividendos, JCP, etc.).
-
-```typescript
-interface IncomeRecord {
-  assetCode: string;
-  assetCategory: AssetCategory;
-  incomeType: IncomeType;
-  date: Date;
-  value: number;
-  taxWithheld?: number;
-  year: number;
-  payerName: string;
-  payerCNPJ: string;
-}
-
-enum IncomeType {
-  DIVIDEND = "DIVIDEND",
-  JCP = "JCP",
-  REAL_ESTATE_FUND_INCOME = "REAL_ESTATE_FUND_INCOME",
-  EXEMPT_PROFIT = "EXEMPT_PROFIT"
-}
-```
-
-#### IRPFDeclaration
-
-Representa uma declaração IRPF completa.
-
-```typescript
-interface IRPFDeclaration {
-  taxPayerInfo: TaxPayerInfo;
-  assets: Asset[];
-  exemptIncome: ExemptIncome[];
-  exclusiveTaxIncome: ExclusiveTaxIncome[];
-  variableIncome: VariableIncome;
-  year: number;
-}
-```
+Os modelos de domínio (`Transaction`, `SpecialEvent`, `AssetPosition`, `TradeResult`, `MonthlyResult`, `IncomeRecord`, `IRPFDeclaration`) estão descritos em detalhe em [02-modelos-dominio.md](../architecture/02-modelos-dominio.md) — não são repetidos aqui para evitar duas fontes divergentes.
 
 ### Estrutura de Armazenamento
 
-O armazenamento local é implementado usando IndexedDB, com a seguinte estrutura:
+O armazenamento local (`IndexedDBStorage`, ver [03-portas-interfaces.md](../architecture/03-portas-interfaces.md#storageport)) usa duas stores principais, espelhando `StoredSession` e `StoredData`:
 
-#### Store: sessions
-
-Armazena metadados das sessões.
-
-```typescript
-interface StoredSession {
-  id: string;
-  createdAt: Date;
-  lastModified: Date;
-  year: number;
-  description?: string;
-  status: SessionStatus;
-}
-
-enum SessionStatus {
-  DRAFT = "DRAFT",
-  PROCESSED = "PROCESSED",
-  GENERATED = "GENERATED",
-  ARCHIVED = "ARCHIVED"
-}
-```
-
-#### Store: sessionData
-
-Armazena os dados completos de cada sessão.
-
-```typescript
-interface StoredData {
-  sessionId: string;
-  transactions: Transaction[];
-  specialEvents: SpecialEvent[];
-  initialPositions?: AssetPosition[];
-  processedData?: {
-    assetPositions: AssetPosition[];
-    monthlyResults: MonthlyResult[];
-    incomeRecords: IncomeRecord[];
-  };
-  generatedDeclaration?: IRPFDeclaration;
-}
-```
+- **sessions**: metadados de cada sessão (`id`, `createdAt`, `lastModified`, `year`, `description`, `status`).
+- **sessionData**: dados completos da sessão — transações, eventos especiais, posições iniciais, `processedData` (posições, resultados mensais, rendimentos) e a declaração gerada, além do conteúdo original de um `.DBK` importado (`saveOriginalDBK`/`getOriginalDBK`).
 
 ## Considerações sobre Escalabilidade
 
@@ -406,21 +199,11 @@ O volume de dados processados pela aplicação pode variar significativamente de
 - **Investidor Ativo**: Centenas de transações por ano
 - **Day Trader**: Milhares de transações por ano
 
-Para lidar com diferentes volumes de dados, a aplicação implementa as seguintes estratégias:
-
-1. **Processamento Incremental**: Processamento em lotes para grandes volumes de dados
-2. **Web Workers**: Uso de threads separados para operações intensivas
-3. **Indexação Eficiente**: Índices otimizados no IndexedDB para recuperação rápida
-4. **Paginação**: Carregamento paginado de dados para visualização
+Hoje o processamento roda inteiramente na thread principal (não há Web Workers) e não há paginação, compressão de dados históricos, monitoramento de uso de armazenamento ou políticas automáticas de expiração de sessões antigas — são melhorias possíveis, não implementadas. O que já existe: o usuário pode exportar/importar uma sessão (`exportSession`/`importSession` em `AppContext`) e excluir sessões manualmente pela `HomePage`.
 
 ### Limitações do Armazenamento Local
 
-O IndexedDB tem limitações de armazenamento que variam conforme o navegador e o dispositivo. Para lidar com essas limitações, a aplicação:
-
-1. **Monitora o Uso de Armazenamento**: Verifica o espaço disponível antes de operações de escrita
-2. **Implementa Políticas de Expiração**: Remove dados antigos quando necessário
-3. **Oferece Exportação de Dados**: Permite que o usuário exporte dados para armazenamento externo
-4. **Comprime Dados**: Utiliza técnicas de compressão para dados históricos
+O IndexedDB tem limitações de armazenamento que variam conforme o navegador e o dispositivo; a aplicação não implementa hoje nenhuma mitigação automática para isso além da exclusão manual de sessões pelo usuário.
 
 ## Conclusão
 

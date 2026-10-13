@@ -48,7 +48,8 @@
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
     "test": "python scripts/generate_asset_tests.py --year 2025 && jest",
-    "test:specific-asset": "jest src/infrastructure/adapters/__tests__/calculation/CMIG.test.ts"
+    "test:specific-asset": "jest src/infrastructure/adapters/__tests__/calculation/CMIG.test.ts",
+    "lint": "eslint src --ext .ts,.tsx"
   },
   "eslintConfig": {
     "env": {

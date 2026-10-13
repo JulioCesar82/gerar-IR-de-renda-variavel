@@ -25,7 +25,7 @@ O exemplo dos arquivos de entrada e saída podem ser encontrados em [documentati
 
 A receita federal divulga os manuais abaixo detalhando o arquivo de template oficial suportado pelo programa: [https://www.gov.br/receitafederal/pt-br/centrais-de-conteudo/publicacoes/documentos-tecnicos/dirpf](https://www.gov.br/receitafederal/pt-br/centrais-de-conteudo/publicacoes/documentos-tecnicos/dirpf).
 
-Atualmente temos suporte ao último template disponível (2023) através dessas classes: [src/infrastructure/adapters/LayoutDBK2025/](./src/infrastructure/adapters/LayoutDBK2025/).
+Atualmente temos suporte ao último template disponível (declaração 2025, ano-calendário 2024) através dessas classes: [src/infrastructure/adapters/LayoutDBK2025/](./src/infrastructure/adapters/LayoutDBK2025/).
 
 
 ### Teste unitários
@@ -42,7 +42,7 @@ Para trazer maior segurança nos dados gerados com base nos arquivos de entrada,
 -   **Tratamento de Eventos Especiais:** Lida com desdobramentos (splits), grupamentos (inplits) e bonificações.
 -   **Geração de Relatórios:** Visualize um relatório completo com todas as informações necessárias para a sua declaração.
 -   **Exportação para .DBK:** Gere um arquivo `.DBK` consolidado, pronto para ser importado no programa oficial da Receita Federal, preenchendo automaticamente os campos da sua declaração.
--   **Privacidade Total:** Todo o processamento é feito localmente no seu navegador. Seus dados financeiros nunca saem do seu computador.
+-   **Privacidade:** O processamento das suas transações e a geração do arquivo `.DBK` são feitos localmente no seu navegador. A única exceção é a busca da razão social das empresas (a partir do CNPJ, já público) na API [BrasilAPI](https://brasilapi.com.br/), usada apenas para exibição na tela de resultados.
 
 ---
 
@@ -74,8 +74,8 @@ Siga os passos abaixo para configurar e executar o projeto localmente.
 
 1.  **Clone o repositório:**
     ```bash
-    git clone https://github.com/JulioCesar82/gerar-imposto-de-renda.git
-    cd gerar-imposto-de-renda
+    git clone https://github.com/JulioCesar82/gerar-IR-de-renda-variavel.git
+    cd gerar-IR-de-renda-variavel
     ```
 
 2.  **Instale as dependências:**
@@ -92,14 +92,14 @@ Siga os passos abaixo para configurar e executar o projeto localmente.
     # .env
     REACT_APP_BRAPI_TOKEN=SEU_TOKEN_DA_BRAPI_AQUI
     ```
-    *O token da Brapi é usado para buscar informações adicionais sobre os ativos, como CNPJs.*
+    *Nota: o adaptador que usaria esse token (`BrapiAdapter`) ainda não está conectado na aplicação — hoje a busca de razão social usa a API pública BrasilAPI, sem necessidade de token.*
 
 ### Executando a Aplicação
 
 Para iniciar o servidor de desenvolvimento, execute:
 
 ```bash
-npm start
+npm run dev
 ```
 
 A aplicação estará disponível em `http://localhost:3000`.
