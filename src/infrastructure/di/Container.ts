@@ -15,6 +15,7 @@ import { GenerateDeclarationUseCase } from '../../core/usecases/GenerateDeclarat
 import { SessionManagementUseCase } from '../../core/usecases/SessionManagementUseCase';
 
 import { ExternalTickerInfoProviderPort } from '../../core/interfaces/ExternalTickerInfoProviderPort';
+import { ReportGeneratorPort } from '../../core/interfaces/ReportGeneratorPort';
 
 /**
  * Dependency injection container
@@ -29,7 +30,7 @@ export class Container {
 
   private dbkFileParser: DBKFileParser;
   private dbkFileGenerator: DBKFileGenerator;
-  private excelFileGenerator: ExcelReportGenerator;
+  private excelFileGenerator: ReportGeneratorPort;
 
   private storage: IndexedDBStorage;
   private externalTickerInfoProvider: ExternalTickerInfoProviderPort;
@@ -80,7 +81,7 @@ export class Container {
   
   public getDBKFileGenerator(): DBKFileGenerator { return this.dbkFileGenerator; }
   public getDBKFileParser(): DBKFileParser { return this.dbkFileParser; }
-  public getExcelFileGenerator(): ExcelReportGenerator { return this.excelFileGenerator; }
+  public getExcelFileGenerator(): ReportGeneratorPort { return this.excelFileGenerator; }
 
   public getExternalTickerInfoProvider(): ExternalTickerInfoProviderPort { return this.externalTickerInfoProvider; }
 }

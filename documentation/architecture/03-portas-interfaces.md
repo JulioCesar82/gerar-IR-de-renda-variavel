@@ -73,9 +73,21 @@ export interface IRPFGeneratorPort {
 }
 ```
 
-**Implementação:** `DBKFileGenerator` (`src/infrastructure/adapters/DBKFileGenerator.ts`), que usa `WritterDBKFileEditor` (`src/infrastructure/adapters/LayoutDBK2025/`) internamente. `originalContent` permite basear a geração em um `.DBK` previamente importado, preservando campos não gerenciados pela aplicação.
+**Implementação:** `DBKFileGenerator` (`src/infrastructure/adapters/DBKFileGenerator.ts`). `generateDeclaration` é delegado a `DeclarationBuilder` (`src/infrastructure/adapters/DeclarationBuilder.ts`), que constrói a estrutura `DeclarationSection`/`DeclarationItem` a partir dos dados processados; `generateFile` usa `WritterDBKFileEditor` (`src/infrastructure/adapters/LayoutDBK2025/`) para serializar essa estrutura no formato `.DBK`. Essa separação existe para manter a lógica de apuração (quanto cada seção/item vale) isolada da lógica de serialização (como isso é escrito em bytes). `originalContent` permite basear a geração em um `.DBK` previamente importado, preservando campos não gerenciados pela aplicação.
 
 Há também `DBKFileParser` (`src/infrastructure/adapters/DBKFileParser.ts`), que usa `ReaderDBKFileEditor` para extrair `TaxPayerInfo` (e, opcionalmente, dados parciais da declaração) de um `.DBK` existente — usado na funcionalidade "Importar Declaração Pré-Preenchida".
+
+## ReportGeneratorPort
+
+Gera um relatório auxiliar (hoje, Excel) a partir de uma declaração IRPF já estruturada.
+
+```typescript
+export interface ReportGeneratorPort {
+  generate(declaration: IRPFDeclaration): Blob;
+}
+```
+
+**Implementação:** `ExcelReportGenerator` (`src/infrastructure/adapters/ExcelReportGenerator.ts`), usando SheetJS/`xlsx`.
 
 ## StoragePort
 

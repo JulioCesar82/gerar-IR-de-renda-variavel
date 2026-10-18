@@ -34,7 +34,6 @@ import { createPortal } from 'react-dom';
 import { useAppContext } from '../context/AppContext';
 import { useNavFooter } from '../context/NavFooterContext';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import { Container } from '../../infrastructure/di/Container';
 import { tryDownloadFile } from '../../utils/presentation';
 import { AssetPosition } from 'src/core/domain/AssetPosition';
 import { AssetCategory } from '../../core/domain/Transaction';
@@ -264,7 +263,13 @@ const CollapsibleRow: React.FC<{ row: any, onAssetClick: (assetCode: string) => 
 export const ResultPage: React.FC = () => {
   const { state, actions } = useAppContext();
   const { currentSessionData, currentSessionId } = state;
-  const { generateDBKFile, generateExcelFile, setActiveStep } = actions;
+  const {
+    generateDBKFile,
+    generateExcelFile,
+    hasOriginalDBK: checkHasOriginalDBK,
+    getOriginalDBKFile,
+    setActiveStep,
+  } = actions;
   const navFooter = useNavFooter();
 
   // State for asset details dialog
@@ -329,23 +334,13 @@ export const ResultPage: React.FC = () => {
   
   // Check if original DBK file exists
   React.useEffect(() => {
-    const checkOriginalDBK = async () => {
-      if (currentSessionId) {
-        try {
-          const storage = Container.getInstance().getStorage();
-          const originalContent = await storage.getOriginalDBK(currentSessionId);
-          setHasOriginalDBK(!!originalContent);
-        } catch (error) {
-          console.error('Error checking original DBK file:', error);
-          setHasOriginalDBK(false);
-        }
-      } else {
-        setHasOriginalDBK(false);
-      }
-    };
-    
-    checkOriginalDBK();
-  }, [currentSessionId]);
+    if (!currentSessionId) {
+      setHasOriginalDBK(false);
+      return;
+    }
+
+    checkHasOriginalDBK(currentSessionId).then(setHasOriginalDBK);
+  }, [currentSessionId, checkHasOriginalDBK]);
 
   /**
    * Handle DBK download click
@@ -383,20 +378,15 @@ export const ResultPage: React.FC = () => {
       if (!currentSessionId) {
         throw new Error('No session selected');
       }
-      
-      // Get original DBK content
-      const storage = Container.getInstance().getStorage();
-      const originalContent = await storage.getOriginalDBK(currentSessionId);
-      
-      if (!originalContent) {
+
+      const blob = await getOriginalDBKFile(currentSessionId);
+
+      if (!blob) {
         alert('Arquivo DBK original não encontrado');
         return;
       }
-      
-      // Create a Blob with the original content
-      const blob = new Blob([originalContent], { type: 'application/octet-stream' });
-      
-      tryDownloadFile(blob, `irpf_original_${new Date().getFullYear()}.dbk`);    
+
+      tryDownloadFile(blob, `irpf_original_${new Date().getFullYear()}.dbk`);
     } catch (error) {
       console.error('Error downloading original DBK file:', error);
       alert('Erro ao baixar arquivo DBK original');
