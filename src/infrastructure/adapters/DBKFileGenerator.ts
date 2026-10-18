@@ -186,7 +186,7 @@ export class DBKFileGenerator implements IRPFGeneratorPort {
       const editor = new DBKFileEditor(originalContent || '');
       const writterEditor = new WritterDBKFileEditor(editor);
 
-      this.writeDadosDeclarante(writterEditor, declaration.taxPayerInfo);
+      this.writeDadosDeclarante(writterEditor, declaration.taxPayerInfo, declaration.year);
       this.writeDeclarationSections(writterEditor, declaration);
 
       // A atualização do T9 agora é feita dentro do getRawContent do Writter
@@ -207,7 +207,8 @@ export class DBKFileGenerator implements IRPFGeneratorPort {
 
   private writeDadosDeclarante(
     writterEditor: WritterDBKFileEditor,
-    taxPayerInfo: TaxPayerInfo
+    taxPayerInfo: TaxPayerInfo,
+    year: number
   ): void {
     const ddd = taxPayerInfo.phone?.substring(0, 2) || '';
     const phone = taxPayerInfo.phone?.substring(2) || '';
@@ -245,7 +246,7 @@ export class DBKFileGenerator implements IRPFGeneratorPort {
       // tipoConta: declaration.taxPayerInfo.tipoConta,
     };
 
-    writterEditor.setIdentificacaoDeclarante(declaranteData);
+    writterEditor.setIdentificacaoDeclarante(declaranteData, year);
   }
 
   private writeDeclarationSections(
@@ -405,16 +406,17 @@ export class DBKFileGenerator implements IRPFGeneratorPort {
         if (!opsPorMes[item.month].dt) {
           opsPorMes[item.month].dt = { mes: item.month.toString().padStart(2, '0') };
         }
-        // TODO: Mapear 'item.value' (resultado líquido) para o campo correto em OperacaoComumDayTradeMesWriteData
-        // Exemplo: opsPorMes[item.month].dt!.vrResliquidoMesDaytrade = item.value;
-        // Adicionar outros campos mapeados de 'item' se necessário
+        opsPorMes[item.month].dt!.vrResliquidoMesDaytrade = item.value;
+      } else if (item.type === 'COMMON_ACOES') {
+        if (!opsPorMes[item.month].dt) {
+          opsPorMes[item.month].dt = { mes: item.month.toString().padStart(2, '0') };
+        }
+        opsPorMes[item.month].dt!.vrResliquidoMesOpcomuns = item.value;
       } else if (item.type === 'FII') {
         if (!opsPorMes[item.month].fii) {
           opsPorMes[item.month].fii = { mes: item.month };
         }
-        // TODO: Mapear 'item.value' (resultado líquido) para o campo correto em OperacaoFIIMesWriteData
-        // Exemplo: opsPorMes[item.month].fii!.vrResliquidoMes = item.value;
-        // Adicionar outros campos mapeados de 'item' se necessário
+        opsPorMes[item.month].fii!.vrResliquidoMes = item.value;
       }
     });
 
@@ -794,7 +796,21 @@ export class DBKFileGenerator implements IRPFGeneratorPort {
       }
     });
 
-    // TODO: Adicionar Operações Comuns (não Day-Trade) aqui, mapeando para R40
+    // --- Ações - Operações Comuns, não Day-Trade (Mapeia para R40) ---
+    const commonResults = results.filter(r => r.tradeType === 'Common');
+    commonResults.forEach(result => {
+      if ((result.netResult || 0) !== 0) {
+        items.push({
+          code: `RV_COMUM_ACOES.${result.month}`,
+          description: `Resultado Líquido Operações Comuns Ações - ${this.getMonthName(
+            result.month
+          )}/${year}`,
+          value: result.netResult || 0,
+          month: result.month,
+          type: 'COMMON_ACOES',
+        });
+      }
+    });
 
     return {
       code: 'OP_RENDA_VARIAVEL',

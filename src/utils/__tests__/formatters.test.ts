@@ -1,10 +1,11 @@
-import { 
-  formatCurrency, 
-  formatPercentage, 
-  formatDate, 
-  formatMonthYear, 
-  formatNumber, 
-  formatNumberWithDecimals 
+import {
+  formatCurrency,
+  formatPercentage,
+  formatDate,
+  formatMonthYear,
+  formatNumber,
+  formatNumberWithDecimals,
+  getAssetKey
 } from '../formatters';
 
 describe('Formatters', () => {
@@ -92,8 +93,28 @@ describe('Formatters', () => {
 
   describe('getAssetKey', () => {
 
-    it('getAssetKey', () => {
-      // TODO
+    it('should keep digits that distinguish share classes of the same company', () => {
+      expect(getAssetKey('ITUB3')).toBe('ITUB3');
+      expect(getAssetKey('ITUB4')).toBe('ITUB4');
+      expect(getAssetKey('ITUB3')).not.toBe(getAssetKey('ITUB4'));
+    });
+
+    it('should strip the trailing ticker/company name after " - "', () => {
+      expect(getAssetKey('PETR4 - PETROBRAS PN')).toBe('PETR4');
+    });
+
+    it('should strip only the fractional-share "F" suffix', () => {
+      expect(getAssetKey('ITSA4F')).toBe('ITSA4');
+      expect(getAssetKey('ITSA4')).toBe('ITSA4');
+    });
+
+    it('should uppercase and trim the ticker', () => {
+      expect(getAssetKey('  petr4  ')).toBe('PETR4');
+    });
+
+    it('should return UNKNOWN for empty/undefined input', () => {
+      expect(getAssetKey('' as unknown as string)).toBe('UNKNOWN');
+      expect(getAssetKey(undefined as unknown as string)).toBe('UNKNOWN');
     });
 
   });

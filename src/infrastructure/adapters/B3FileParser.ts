@@ -4,6 +4,7 @@ import { FileParserPort } from '../../core/interfaces/FileParserPort';
 import { Transaction, MarketType, AssetCategory } from '../../core/domain/Transaction';
 import { SpecialEvent, SpecialEventType } from '../../core/domain/SpecialEvent';
 import { assetCategoryOverrides } from '../data/staticAssetCategoryOverrides';
+import { getAssetKey } from '../../utils/formatters';
 
 /**
  * Implementation of the FileParserPort interface for B3 files
@@ -189,7 +190,7 @@ export class B3FileParser implements FileParserPort {
       }
       
       const marketType = this.parseMarketType(row['Mercado']);
-      const assetCode = this.getAssetKey(row['Código de Negociação']);
+      const assetCode = getAssetKey(row['Código de Negociação']);
       const assetName = row['Especificação do Ativo'] || assetCode;
       const quantity = this.parseNumber(row['Quantidade']);
       const unitPrice = this.parseNumber(row['Preço'] || row['Preço (R$)']);
@@ -259,7 +260,7 @@ export class B3FileParser implements FileParserPort {
       const date = this.parseDate(dateStr);
       const eventStr = getValue(row, ['Movimentação', 'Movimentacao', 'Tipo de Movimentação']);
       const type = this.parseEventType(eventStr || '');
-      const assetCode = this.getAssetKey(productStr);
+      const assetCode = getAssetKey(productStr);
       const assetName = productStr; // Use raw product string for name
       const quantity = this.parseNumber(getValue(row, ['Quantidade', 'Qtd']) || 0);
       const unitPrice = this.parseNumber(getValue(row, ['Preço unitário', 'Preço Unitário', 'PreÃ§o unitÃ¡rio', 'Preco unitario', 'Preço']) || 0);
@@ -413,24 +414,6 @@ export class B3FileParser implements FileParserPort {
   }
   
   /**
-   * Normalize an asset code
-   * @param assetCode The asset code to normalize
-   * @returns The normalized asset code
-   */
-  private getAssetKey(assetCode: string): string {
-    // Normalize asset code by removing the 'F' suffix for fractional shares
-    // This ensures that ITSA4 and ITSA4F are treated as the same asset
-    
-    // This ensures that 'PETR4 - PETROBRAS PN' and PETR4 are treated as the same asset
-
-    // Remove spaces and convert to uppercase
-    
-    const ticker: string = assetCode.split(' - ')[0].toUpperCase().trim();
-
-    return ticker.endsWith('F') ? ticker.slice(0, -1) : ticker;
-  }
-  
-  /**
    * Parse a number
    * @param value The value to parse
    * @returns The parsed number
@@ -475,7 +458,9 @@ export class B3FileParser implements FileParserPort {
   private calculateFees(row: any): number {
     let fees = 0;
     
-    // Add up all fee fields
+    // Add up all fee fields. 'Impostos'/'I.R.R.F.' are NOT included here: they are
+    // taxes, accounted for separately in calculateTaxes. Including them here as well
+    // would double-count them in netValue (see calculateTaxes/processNegotiationData).
     const feeFields = [
       'Taxa de Liquidação',
       'Taxa de Registro',
@@ -485,8 +470,6 @@ export class B3FileParser implements FileParserPort {
       'Taxa Operacional',
       'Execução',
       'Taxa de Custódia',
-      'Impostos',
-      'I.R.R.F.',
       'Outros'
     ];
     
