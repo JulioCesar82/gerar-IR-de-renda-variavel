@@ -1,247 +1,7 @@
 import { DBKFileEditor } from './DBKFileEditor';
-import { format } from 'date-fns'; // Needed for date formatting if Date objects are passed
+import { FieldDefinition, layout, buildRecordLine } from './layout';
 
-// --- Layout Definition (Copied - Needs Centralization) ---
-// TODO: Refactor layout definition into a shared module
-interface FieldDefinition {
-  name: string;
-  start: number; // 1-based index
-  end: number;
-  size: number;
-  decimals?: number;
-  format: 'N' | 'NN' | 'A' | 'C' | 'I' | 'D'; // Added 'D' for Date
-}
-
-interface RecordDefinition {
-  prefix: string;
-  fields: FieldDefinition[];
-  totalLength: number;
-}
-
-const layout: { [key: string]: RecordDefinition } = {
-  // Include definitions for IR, 16, 27, 23, 84, 86, 24, 88, 40, 42, T9
-  // (Copy relevant definitions from ReaderDBKFileEditor.ts or the original layout doc)
-  IR: {
-    prefix: 'IR',
-    totalLength: 1203,
-    fields: [
-      { name: 'NR_CPF', start: 22, end: 32, size: 11, format: 'C' },
-      /* ... other IR fields */ {
-        name: 'NR_CONTROLE',
-        start: 1194,
-        end: 1203,
-        size: 10,
-        format: 'N',
-      },
-    ],
-  },
-  '16': {
-    prefix: '16',
-    totalLength: 881,
-    fields: [
-      { name: 'NR_CPF', start: 3, end: 13, size: 11, format: 'C' },
-      /* ... other R16 fields */ {
-        name: 'NR_CONTROLE',
-        start: 872,
-        end: 881,
-        size: 10,
-        format: 'N',
-      },
-    ],
-  },
-  '27': {
-    prefix: '27',
-    totalLength: 1174,
-    fields: [
-      { name: 'NR_REG', start: 1, end: 2, size: 2, format: 'N' },
-      { name: 'NR_CPF', start: 3, end: 13, size: 11, format: 'C' },
-      { name: 'CD_BEM', start: 14, end: 15, size: 2, format: 'N' },
-      { name: 'IN_EXTERIOR', start: 16, end: 16, size: 1, format: 'N' },
-      { name: 'CD_PAIS', start: 17, end: 19, size: 3, format: 'N' },
-      { name: 'TX_BEM', start: 20, end: 531, size: 512, format: 'C' },
-      { name: 'VR_ANTER', start: 532, end: 544, size: 13, decimals: 2, format: 'N' },
-      { name: 'VR_ATUAL', start: 545, end: 557, size: 13, decimals: 2, format: 'N' },
-      { name: 'NM_LOGRA', start: 558, end: 597, size: 40, format: 'C' },
-      { name: 'NR_NUMERO', start: 598, end: 603, size: 6, format: 'C' },
-      { name: 'NM_COMPLEM', start: 604, end: 643, size: 40, format: 'C' },
-      { name: 'NM_BAIRRO', start: 644, end: 683, size: 40, format: 'C' },
-      { name: 'NR_CEP', start: 684, end: 692, size: 9, format: 'C' },
-      { name: 'SG_UF', start: 693, end: 694, size: 2, format: 'C' },
-      { name: 'CD_MUNICIP', start: 695, end: 698, size: 4, format: 'N' },
-      { name: 'NM_MUNICIP', start: 699, end: 738, size: 40, format: 'C' },
-      { name: 'NM_IND_REG_IMOV', start: 739, end: 739, size: 1, format: 'N' },
-      { name: 'MATRIC_IMOV', start: 740, end: 779, size: 40, format: 'A' },
-      { name: 'Filler_780', start: 780, end: 819, size: 40, format: 'A' },
-      { name: 'AREA', start: 820, end: 830, size: 11, decimals: 1, format: 'N' },
-      { name: 'NM_UNID', start: 831, end: 831, size: 1, format: 'N' },
-      { name: 'NM_CARTORIO', start: 832, end: 891, size: 60, format: 'A' },
-      { name: 'NR_CHAVE_BEM', start: 892, end: 896, size: 5, format: 'N' },
-      { name: 'DT_AQUISICAO', start: 897, end: 904, size: 8, format: 'D' },
-      { name: 'Filler_905', start: 905, end: 924, size: 20, format: 'C' },
-      { name: 'FILLER_925', start: 925, end: 932, size: 8, format: 'N' },
-      { name: 'NR_RENAVAN', start: 933, end: 962, size: 30, format: 'C' },
-      { name: 'NR_DEP_AVIACAO_CIVIL', start: 963, end: 992, size: 30, format: 'C' },
-      { name: 'NR_CAPITANIA_PORTOS', start: 993, end: 1022, size: 30, format: 'C' },
-      { name: 'NR_AGENCIA', start: 1023, end: 1026, size: 4, format: 'N' },
-      { name: 'Filler_1027', start: 1027, end: 1039, size: 13, format: 'C' },
-      { name: 'NR_DV_CONTA', start: 1040, end: 1041, size: 2, format: 'C' },
-      { name: 'NM_CPFCNPJ', start: 1042, end: 1055, size: 14, format: 'C' }, // Used for CNPJ
-      { name: 'NR_IPTU', start: 1056, end: 1085, size: 30, format: 'C' },
-      { name: 'NR_BANCO', start: 1086, end: 1088, size: 3, format: 'N' },
-      { name: 'IN_TIPO_BENEFIC', start: 1089, end: 1089, size: 1, format: 'C' },
-      { name: 'NR_CPF_BENEFIC', start: 1090, end: 1100, size: 11, format: 'C' },
-      { name: 'CD_GRUPO_BEM', start: 1101, end: 1102, size: 2, format: 'C' },
-      { name: 'IN_BEM_INVENTARIAR', start: 1103, end: 1103, size: 1, format: 'N' },
-      { name: 'NR_CONTA', start: 1104, end: 1123, size: 20, format: 'C' },
-      { name: 'NR_CIB', start: 1124, end: 1131, size: 8, format: 'A' },
-      { name: 'NR_CEI_CNO', start: 1132, end: 1143, size: 12, format: 'N' },
-      { name: 'IN_BOLSA', start: 1144, end: 1144, size: 1, format: 'N' },
-      { name: 'NR_COD_NEGOCIACAO_BOLSA', start: 1145, end: 1164, size: 20, format: 'A' },
-      { name: 'NR_CONTROLE', start: 1165, end: 1174, size: 10, format: 'N' },
-    ],
-  },
-  '23': {
-    prefix: '23',
-    totalLength: 40,
-    fields: [
-      { name: 'NR_REG', start: 1, end: 2, size: 2, format: 'N' },
-      { name: 'NR_CPF', start: 3, end: 13, size: 11, format: 'C' },
-      { name: 'NR_COD_ISENTO', start: 14, end: 17, size: 4, format: 'N' },
-      { name: 'VR_VALOR', start: 18, end: 30, size: 13, decimals: 2, format: 'N' },
-      { name: 'NR_CONTROLE', start: 31, end: 40, size: 10, format: 'N' },
-    ],
-  },
-  '24': {
-    prefix: '24',
-    totalLength: 40,
-    fields: [
-      { name: 'NR_REG', start: 1, end: 2, size: 2, format: 'N' },
-      { name: 'NR_CPF', start: 3, end: 13, size: 11, format: 'C' },
-      { name: 'NR_COD_EXCLUSIVO', start: 14, end: 17, size: 4, format: 'N' },
-      { name: 'VR_VALOR', start: 18, end: 30, size: 13, decimals: 2, format: 'N' },
-      { name: 'NR_CONTROLE', start: 31, end: 40, size: 10, format: 'N' },
-    ],
-  },
-  '40': {
-    prefix: '40',
-    totalLength: 641,
-    fields: [
-      { name: 'NR_REG', start: 1, end: 2, size: 2, format: 'N' },
-      { name: 'NR_CPF', start: 3, end: 13, size: 11, format: 'C' },
-      { name: 'RV_MES', start: 14, end: 15, size: 2, format: 'C' },
-      { name: 'GC_DAYTR_MVISTA_ACOES', start: 185, end: 197, size: 13, decimals: 2, format: 'NN' },
-      /* ... other R40 fields */ {
-        name: 'NR_CONTROLE',
-        start: 632,
-        end: 641,
-        size: 10,
-        format: 'N',
-      },
-    ],
-  },
-  '42': {
-    prefix: '42',
-    totalLength: 170,
-    fields: [
-      { name: 'NR_REG', start: 1, end: 2, size: 2, format: 'N' },
-      { name: 'NR_CPF', start: 3, end: 13, size: 11, format: 'C' },
-      { name: 'NR_MES', start: 14, end: 15, size: 2, format: 'N' },
-      { name: 'VR_RESLIQUIDO_MES', start: 16, end: 28, size: 13, decimals: 2, format: 'NN' },
-      /* ... other R42 fields */ {
-        name: 'NR_CONTROLE',
-        start: 161,
-        end: 170,
-        size: 10,
-        format: 'N',
-      },
-    ],
-  },
-  '84': {
-    prefix: '84',
-    totalLength: 144,
-    fields: [
-      { name: 'NR_REG', start: 1, end: 2, size: 2, format: 'N' },
-      { name: 'NR_CPF', start: 3, end: 13, size: 11, format: 'C' },
-      { name: 'IN_TIPO', start: 14, end: 14, size: 1, format: 'C' },
-      { name: 'NR_CPF_BENEFIC', start: 15, end: 25, size: 11, format: 'C' },
-      { name: 'NR_COD', start: 26, end: 29, size: 4, format: 'N' },
-      { name: 'NR_PAGADORA', start: 30, end: 43, size: 14, format: 'C' },
-      { name: 'NM_NOME', start: 44, end: 103, size: 60, format: 'C' },
-      { name: 'VR_VALOR', start: 104, end: 116, size: 13, decimals: 2, format: 'N' },
-      { name: 'VR_VALOR_13', start: 117, end: 129, size: 13, decimals: 2, format: 'N' },
-      { name: 'NR_CHAVE_BEM', start: 130, end: 134, size: 5, format: 'N' },
-      { name: 'NR_CONTROLE', start: 135, end: 144, size: 10, format: 'N' },
-    ],
-  },
-  '86': {
-    prefix: '86',
-    totalLength: 191,
-    fields: [
-      { name: 'NR_REG', start: 1, end: 2, size: 2, format: 'N' },
-      { name: 'NR_CPF', start: 3, end: 13, size: 11, format: 'C' },
-      { name: 'IN_TIPO', start: 14, end: 14, size: 1, format: 'C' },
-      { name: 'NR_CPF_BENEFIC', start: 15, end: 25, size: 11, format: 'C' },
-      { name: 'NR_COD', start: 26, end: 29, size: 4, format: 'N' },
-      { name: 'NR_PAGADORA', start: 30, end: 43, size: 14, format: 'C' },
-      { name: 'NM_NOME', start: 44, end: 103, size: 60, format: 'C' },
-      { name: 'VR_VALOR', start: 104, end: 116, size: 13, decimals: 2, format: 'N' },
-      { name: 'NM_DESCRICAO', start: 117, end: 176, size: 60, format: 'C' },
-      { name: 'NR_CHAVE_BEM', start: 177, end: 181, size: 5, format: 'N' },
-      { name: 'NR_CONTROLE', start: 182, end: 191, size: 10, format: 'N' },
-    ],
-  },
-  '88': {
-    prefix: '88',
-    totalLength: 131,
-    fields: [
-      { name: 'NR_REG', start: 1, end: 2, size: 2, format: 'N' },
-      { name: 'NR_CPF', start: 3, end: 13, size: 11, format: 'C' },
-      { name: 'IN_TIPO', start: 14, end: 14, size: 1, format: 'C' },
-      { name: 'NR_CPF_BENEFIC', start: 15, end: 25, size: 11, format: 'C' },
-      { name: 'NR_COD', start: 26, end: 29, size: 4, format: 'N' },
-      { name: 'NR_PAGADORA', start: 30, end: 43, size: 14, format: 'C' },
-      { name: 'NM_NOME', start: 44, end: 103, size: 60, format: 'C' },
-      { name: 'VR_VALOR', start: 104, end: 116, size: 13, decimals: 2, format: 'N' },
-      { name: 'NR_CHAVE_BEM', start: 117, end: 121, size: 5, format: 'N' },
-      { name: 'NR_CONTROLE', start: 122, end: 131, size: 10, format: 'N' },
-    ],
-  },
-  T9: {
-    prefix: 'T9',
-    totalLength: 449,
-    fields: [
-      { name: 'NR_REG', start: 1, end: 2, size: 2, format: 'C' },
-      { name: 'NR_CPF', start: 3, end: 13, size: 11, format: 'N' },
-      { name: 'QT_TOTAL', start: 14, end: 19, size: 6, format: 'N' },
-      { name: 'QT_R16', start: 20, end: 24, size: 5, format: 'N' },
-      { name: 'QT_R17', start: 25, end: 29, size: 5, format: 'N' },
-      { name: 'QT_R18', start: 30, end: 34, size: 5, format: 'N' },
-      { name: 'QT_R19', start: 35, end: 39, size: 5, format: 'N' },
-      { name: 'QT_R20', start: 40, end: 44, size: 5, format: 'N' },
-      { name: 'QT_R21', start: 45, end: 49, size: 5, format: 'N' },
-      { name: 'QT_R22', start: 50, end: 54, size: 5, format: 'N' },
-      { name: 'QT_R23', start: 55, end: 59, size: 5, format: 'N' },
-      { name: 'QT_R24', start: 60, end: 64, size: 5, format: 'N' },
-      { name: 'QT_R25', start: 65, end: 69, size: 5, format: 'N' },
-      { name: 'QT_R26', start: 70, end: 74, size: 5, format: 'N' },
-      { name: 'QT_R27', start: 75, end: 79, size: 5, format: 'N' },
-      { name: 'QT_R28', start: 80, end: 84, size: 5, format: 'N' },
-      { name: 'QT_R83', start: 355, end: 359, size: 5, format: 'N' },
-      { name: 'QT_R84', start: 360, end: 364, size: 5, format: 'N' },
-      { name: 'QT_R85', start: 365, end: 369, size: 5, format: 'N' },
-      { name: 'QT_R86', start: 370, end: 374, size: 5, format: 'N' },
-      { name: 'QT_R87', start: 375, end: 379, size: 5, format: 'N' },
-      { name: 'QT_R88', start: 380, end: 384, size: 5, format: 'N' },
-      { name: 'QT_R89', start: 385, end: 389, size: 5, format: 'N' },
-      { name: 'QT_R90', start: 390, end: 394, size: 5, format: 'N' },
-      { name: 'QT_R91', start: 395, end: 399, size: 5, format: 'N' },
-      { name: 'QT_R92', start: 400, end: 404, size: 5, format: 'N' },
-      { name: 'NR_CONTROLE', start: 440, end: 449, size: 10, format: 'N' },
-    ],
-  },
-};
-
-// --- Helper Functions (Copied - Needs Centralization) ---
+// --- Helper Functions ---
 function padRight(str: string | undefined, length: number): string {
   return (str ?? '').padEnd(length, ' ');
 }
@@ -278,16 +38,6 @@ function formatBoolean(value: boolean | undefined, format: 'S/N' | '1/0'): strin
   } else {
     return value ? '1' : '0';
   }
-}
-function formatDate(value: Date | string | undefined): string {
-  if (value instanceof Date) {
-    return format(value, 'ddMMyyyy');
-  }
-  if (typeof value === 'string' && /^\d{8}$/.test(value)) {
-    // Allow passing DDMMAAAA string
-    return value;
-  }
-  return padRight('', 8); // Default empty date
 }
 
 // --- Data Interfaces for Writing ---
@@ -446,24 +196,108 @@ export class WritterDBKFileEditor {
   }
 
   /**
+   * Builds, from scratch, the minimal set of records a declaration needs (IR header,
+   * Declarante R16, twelve R40 and twelve R42 monthly records, and the T9 trailer)
+   * when no previous .DBK was imported (the editor starts out completely empty).
+   * Every field this program doesn't have authoritative data for is left at a neutral
+   * default (blank/zero) by `buildRecordLine` — this is a best-effort skeleton, not a
+   * byte-perfect reproduction of what Receita's own software would generate.
+   */
+  private createBlankDeclarationSkeleton(cpf: string, exercicioYear: number): void {
+    console.warn(
+      'Nenhum .DBK anterior foi importado: gerando os registros IR/16/40/42/T9 do zero. ' +
+        'Vários campos do cabeçalho IR não são conhecidos por este programa e ficarão em branco/zero. ' +
+        'Revise cuidadosamente o arquivo gerado no programa oficial da Receita Federal antes de transmitir.'
+    );
+
+    const irLine = buildRecordLine('IR', {
+      EXERCICIO: exercicioYear,
+      ANO_BASE: exercicioYear - 1,
+      NR_CPF: cpf,
+      IN_RETIFICADORA: '0',
+      IN_COMPLETA: 'N',
+      IN_GERADA: 'N',
+    });
+    this.editor.insertLine(0, irLine);
+
+    const r16Line = buildRecordLine('16', { NR_CPF: cpf });
+    this.editor.insertLine(1, r16Line);
+
+    for (let mes = 1; mes <= 12; mes++) {
+      const r40Line = buildRecordLine('40', {
+        NR_CPF: cpf,
+        RV_MES: String(mes).padStart(2, '0'),
+      });
+      this.editor.insertLine(this.editor.getLineCount(), r40Line);
+    }
+
+    for (let mes = 1; mes <= 12; mes++) {
+      const r42Line = buildRecordLine('42', { NR_CPF: cpf, NR_MES: mes });
+      this.editor.insertLine(this.editor.getLineCount(), r42Line);
+    }
+
+    const t9Line = buildRecordLine('T9', { NR_CPF: cpf });
+    this.editor.insertLine(this.editor.getLineCount(), t9Line);
+  }
+
+  /**
    * Updates the main fields of the Declarante record (Record 16).
-   * Assumes only one Record 16 exists (recordIndex 0).
+   * Assumes only one Record 16 exists (recordIndex 0). If the editor is completely
+   * empty (no .DBK was imported as a base), the base records are first created from
+   * scratch via `createBlankDeclarationSkeleton`.
    * @param data The data to write.
+   * @param exercicioYear The declaration's exercício year, used only when creating a
+   * brand-new declaration (ignored otherwise).
    * @returns True if all attempted fields were set successfully, false otherwise.
    */
-  public setIdentificacaoDeclarante(data: Partial<DeclaranteData>): boolean {
+  public setIdentificacaoDeclarante(
+    data: Partial<DeclaranteData>,
+    exercicioYear: number = new Date().getFullYear()
+  ): boolean {
+    if (this.editor.getLineCount() === 0) {
+      const cpfDigits = data.cpf?.replace(/\D/g, '') || '';
+      if (!cpfDigits) {
+        console.error('Não é possível gerar uma declaração do zero sem o CPF do contribuinte.');
+        return false;
+      }
+      this.createBlankDeclarationSkeleton(cpfDigits, exercicioYear);
+      this.currentCpf = cpfDigits;
+    }
+
     let success = true;
     const prefix = '16';
     const index = 0; // Assuming only one R16
 
-    // Helper function to set field and track success
+    const records = this.editor.findLinesByRecordType(prefix);
+    if (records.length <= index) {
+      console.warn(`Record ${prefix} with index ${index} not found`);
+      return false;
+    }
+    const lineIndex = records[index].index;
+
+    // Helper function to set field and track success. Looks up the field's position/format
+    // directly in the shared layout and writes it through the low-level editor, instead of
+    // relying on DBKFileEditor.setField (which has no knowledge of any layout and always fails).
     const setField = (fieldName: string, value: any | undefined) => {
-      if (value !== undefined) {
-        const result = this.editor.setField(prefix, fieldName, value, index);
-        if (!result) {
-          console.warn(`Failed to set field ${fieldName} in record ${prefix}`);
-          success = false;
-        }
+      if (value === undefined) return;
+      const fieldDef: FieldDefinition | undefined = layout[prefix].fields.find(
+        f => f.name === fieldName
+      );
+      if (!fieldDef) {
+        console.warn(`Field definition for ${fieldName} in record ${prefix} not found`);
+        success = false;
+        return;
+      }
+      const result = this.editor.updateFieldInLine(
+        lineIndex,
+        fieldDef.start,
+        fieldDef.end,
+        value,
+        fieldDef
+      );
+      if (!result) {
+        console.warn(`Failed to set field ${fieldName} in record ${prefix}`);
+        success = false;
       }
     };
 

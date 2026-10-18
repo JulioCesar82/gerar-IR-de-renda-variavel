@@ -70,10 +70,9 @@ export const formatNumberWithDecimals = (value: number, decimals: number): strin
 
 export const getAssetKey = (assetCode: string): string => {
     const ticker: string = assetCode?.split(' - ')[0].toUpperCase().trim() || 'UNKNOWN';
-    // return ticker.endsWith('F') ? ticker.slice(0, -1) : ticker;
 
-    return ticker
-    .trim()
-    .toUpperCase()
-    .replace(/[0-9]/g, ''); // Only letters
+    // Remove only the 'F' suffix used for fractional shares (e.g. ITSA4F -> ITSA4).
+    // Digits are preserved: they distinguish share classes of the same company
+    // (e.g. ITUB3/ITUB4, PETR3/PETR4) and must NOT be stripped.
+    return ticker.endsWith('F') ? ticker.slice(0, -1) : ticker;
 }

@@ -188,36 +188,6 @@ export class DBKFileEditor {
   }
 
   /**
-   * Set a field value in a record
-   * @param recordType The record type (e.g., '16', '27')
-   * @param fieldName The field name
-   * @param value The new value
-   * @param recordIndex The record index (0-based) if multiple records of the same type exist
-   * @returns True if the field was set successfully, false otherwise
-   */
-  public setField(
-    recordType: string,
-    fieldName: string,
-    value: any,
-    recordIndex: number = 0
-  ): boolean {
-    // Find the record
-    const records = this.findLinesByRecordType(recordType);
-    if (records.length <= recordIndex) {
-      console.warn(`Record ${recordType} with index ${recordIndex} not found`);
-      return false;
-    }
-
-    const lineIndex = records[recordIndex].index;
-
-    // Find the field definition
-    // This would typically come from a layout definition
-    // For now, we'll just return false
-    console.warn(`Field definition for ${fieldName} in record ${recordType} not found`);
-    return false;
-  }
-
-  /**
    * Insert a line at the specified index
    * @param index The index to insert at (0-based)
    * @param content The line content

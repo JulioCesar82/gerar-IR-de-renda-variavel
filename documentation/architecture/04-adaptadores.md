@@ -12,10 +12,11 @@ Os adaptadores são implementações concretas das portas definidas em `src/core
 
 `src/infrastructure/adapters/DBKFileParser.ts` e `DBKFileGenerator.ts` implementam, respectivamente, a extração de dados de um `.DBK` existente (usada para importar uma declaração pré-preenchida) e a geração do `.DBK` final (`IRPFGeneratorPort`). Ambos delegam a manipulação de baixo nível do layout da Receita Federal para as classes em `src/infrastructure/adapters/LayoutDBK2025/`:
 
-- `DBKFileEditor.ts` — estrutura/schema do layout `.DBK` vigente (declaração 2025, ano-calendário 2024).
+- `layout.ts` — único módulo com o schema do layout `.DBK` vigente (declaração 2025, ano-calendário 2024): as interfaces `FieldDefinition`/`RecordDefinition`, o objeto `layout` (campos posicionais de cada registro — IR, 16, 27, 23, 24, 40, 42, 84, 86, 88, T9) e `buildRecordLine()`, que monta uma linha de um registro a partir desse schema (campos não informados recebem um default neutro — espaço/zero — pelo formato do campo). `ReaderDBKFileEditor.ts`, `WritterDBKFileEditor.ts` e `RandomDBKFileGenerator.ts` importam esse módulo em vez de manter cópias próprias (anteriormente havia 3 cópias divergentes; a do `WritterDBKFileEditor.ts` estava incompleta para os registros `IR`/`16`/`40`/`42`, o que impedia a escrita correta desses campos — ver histórico do card CODE-DEBT-001).
+- `DBKFileEditor.ts` — editor de baixo nível, agnóstico de schema: manipula linhas/campos por posição (`start`/`end`) recebidos de quem chama; não conhece o `layout`.
 - `ReaderDBKFileEditor.ts` — leitura/parsing de um `.DBK`.
-- `WritterDBKFileEditor.ts` — escrita/geração de um `.DBK`.
-- `todo-mudar/RandomDBKFileGenerator.ts` — gerador de dados aleatórios para testes; há uma duplicação de estrutura conhecida com `DBKFileEditor.ts`, rastreada em [CODE-DEBT-001](#) (card do kanban do workspace).
+- `WritterDBKFileEditor.ts` — escrita/geração de um `.DBK`. `setIdentificacaoDeclarante()` grava os campos do Declarante (registro 16) usando o schema de `layout.ts` diretamente com `DBKFileEditor.updateFieldInLine()`. Quando o editor está completamente vazio (nenhum `.DBK` anterior foi importado), `createBlankDeclarationSkeleton()` cria do zero os registros IR, 16, doze R40, doze R42 e T9 via `buildRecordLine()` antes de preencher os dados do contribuinte — um esqueleto best-effort: campos do cabeçalho IR sem posição documentada neste projeto (bytes 257–1193) ficam em branco/zero, então o arquivo gerado sem importação prévia deve ser revisado no programa oficial da Receita Federal antes da transmissão.
+- `RandomDBKFileGenerator.ts` — gerador de dados aleatórios para testes, hoje reutilizando o schema de `layout.ts` (fora da pasta `todo-mudar/`, removida após a unificação).
 
 ## IndexedDBStorage
 
