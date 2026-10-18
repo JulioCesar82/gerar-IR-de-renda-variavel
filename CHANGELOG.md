@@ -5,6 +5,19 @@ Todas as alterações notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## [Não lançado]
+
+### Adicionado
+
+- Exibição da razão social da empresa (via BrasilAPI, a partir do CNPJ) na coluna de CNPJ da página de resultados
+- Seletor de corretora por linha na tela de resultados, incluída no texto de discriminação do bem
+- Funcionalidade de reimportação de arquivos em sessões existentes
+
+### Corrigido
+
+- Correção no fator de desdobramento e no cálculo de bonificação
+- `MainLayout` ajustado para permitir container em largura total
+
 ## [1.1.0] - 2025-04-09
 
 ### Adicionado

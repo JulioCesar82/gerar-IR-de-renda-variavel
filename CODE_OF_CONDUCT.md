@@ -36,7 +36,7 @@ Este Código de Conduta se aplica a todos os espaços da comunidade, e também s
 
 ## Contato
 
-Instâncias de comportamento abusivo, de assédio ou de outra forma inaceitável podem ser relatadas aos líderes da comunidade responsáveis pela aplicação em [INSERIR MÉTODO DE CONTATO]. Todas as queixas serão revistas e investigadas prontamente e de forma justa.
+Instâncias de comportamento abusivo, de assédio ou de outra forma inaceitável podem ser relatadas aos líderes da comunidade responsáveis pela aplicação através das [issues do projeto no GitHub](https://github.com/JulioCesar82/gerar-IR-de-renda-variavel/issues). Todas as queixas serão revistas e investigadas prontamente e de forma justa.
 
 Todos os líderes da comunidade são obrigados a respeitar a privacidade e a segurança do relator de qualquer incidente.
 

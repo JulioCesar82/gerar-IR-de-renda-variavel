@@ -8,7 +8,7 @@ A ideia é que você pegue seus extratos de movimentação e negociação lá do
 
 Aí, o aplicativo vai ler tudo: suas compras, vendas, dividendos recebidos, JCP, eventos como desdobramentos, etc. Ele vai fazer todas as contas complicadas (cálculo de custo médio, apuração de lucro/prejuízo conforme as regras da Receita, separando o que é isento e o que não é).
 
-No final, ele gera aquele arquivo (.DEC) que você pode importar direto no programa oficial da Receita Federal. Esse arquivo já vai preencher automaticamente as fichas de 'Bens e Direitos', 'Rendimentos Isentos', 'Rendimentos Sujeitos à Tributação Exclusiva' e 'Renda Variável' com todas as informações das suas ações e FIIs.
+No final, ele gera aquele arquivo (.DBK) que você pode importar direto no programa oficial da Receita Federal. Esse arquivo já vai preencher automaticamente as fichas de 'Bens e Direitos', 'Rendimentos Isentos', 'Rendimentos Sujeitos à Tributação Exclusiva' e 'Renda Variável' com todas as informações das suas ações e FIIs.
 
 O objetivo é simplificar muito essa parte da declaração, economizar tempo e diminuir a chance de erros.
 
@@ -20,7 +20,7 @@ Temos esse sistema:
 
 **Sistema: Gerador de Arquivo de Importação IRPF para Investimentos (Ações e FIIs)**
 
-**Objetivo Principal:** Automatizar a geração do arquivo de importação (`.DEC`) para a Declaração de Imposto de Renda Pessoa Física (DIRPF) no Brasil, especificamente para os dados relacionados a Ações (ações) e Fundos de Investimento Imobiliário (FIIs).
+**Objetivo Principal:** Automatizar a geração do arquivo de importação (`.DBK`) para a Declaração de Imposto de Renda Pessoa Física (DIRPF) no Brasil, especificamente para os dados relacionados a Ações (ações) e Fundos de Investimento Imobiliário (FIIs).
 
 **Entradas (Inputs):**
 
@@ -29,7 +29,7 @@ Temos esse sistema:
     * **Histórico de Movimentações/Eventos:** Tipo (Dividendos, JCP, Rendimento FII, Bonificação, Desdobramento, Grupamento, Subscrição, Conversões, etc.), Data, Código do Ativo, Quantidade, Valor Financeiro (se aplicável), Fatores (para eventos específicos).
     * **Posição Inicial (Opcional):** Posição de custódia (quantidade, custo) em 31/12 do ano anterior ao ano-calendário selecionado.
 2.  **Fonte de Dados (Inicial):** Arquivos extraídos do portal da B3 (ex: `extrato/negociacao`, `extrato/movimentacao`), presumivelmente em formato Excel
-3.  **Parâmetros do Usuário:** Ano-calendário para a declaração, Dados Pessoais do declarante (necessários para o arquivo `.DEC`).
+3.  **Parâmetros do Usuário:** Ano-calendário para a declaração, Dados Pessoais do declarante (necessários para o arquivo `.DBK`).
 
 **Processamento Principal (Core Logic):**
 
@@ -40,11 +40,11 @@ Temos esse sistema:
     * **FIIs:** Lucro sempre tributável.
 4.  **Classificação de Rendimentos:** Identificar e classificar corretamente Dividendos, Juros Sobre Capital Próprio (JCP) e Rendimentos de FIIs.
 5.  **Tratamento de Eventos Específicos:** Processar Juros Sobre Capital creditados e não pagos e Créditos em Trânsito de FIIs para alocação correta em "Bens e Direitos".
-6.  **Agregação e Mapeamento:** Consolidar os dados calculados e mapeá-los para os campos correspondentes do layout do arquivo `.DEC`, conforme especificação da Receita Federal.
+6.  **Agregação e Mapeamento:** Consolidar os dados calculados e mapeá-los para os campos correspondentes do layout do arquivo `.DBK`, conforme especificação da Receita Federal.
 
 **Saída (Output):**
 
-1.  **Arquivo `.DEC`:** Arquivo texto formatado segundo o layout oficial da Receita Federal para o ano-calendário especificado (ex: `Leiaute DIRPF 2023`). O arquivo deve conter dados populados nas seguintes seções (pelo menos):
+1.  **Arquivo `.DBK`:** Arquivo texto formatado segundo o layout oficial da Receita Federal para o ano-calendário especificado (atualmente `LayoutDBK2025`, declaração 2025/ano-calendário 2024). O arquivo deve conter dados populados nas seguintes seções (pelo menos):
     * **Bens e Direitos:**
         * Código 31 (Ações): CNPJ, Discriminação (incluindo Ticker), Situação em 31/12/(ano-1), Situação em 31/12/(ano).
         * Código 73 (FIIs): CNPJ, Discriminação (incluindo Ticker), Situação em 31/12/(ano-1), Situação em 31/12/(ano).
@@ -59,14 +59,14 @@ Temos esse sistema:
         * Mercado à Vista - Ações: Resultados líquidos mensais (lucro/prejuízo).
         * Fundos de Investimento Imobiliário (FII): Resultados líquidos mensais (lucro/prejuízo).
 2.  **Relatório de Inconsistências:** Detalhamento de eventuais erros ou dados inconsistentes encontrados durante o processamento.
-3.  **Mecanismo de Download:** Interface para o usuário baixar o arquivo `.DEC` gerado.
+3.  **Mecanismo de Download:** Interface para o usuário baixar o arquivo `.DBK` gerado.
 
 **Arquitetura e Implementação (Detalhes Mencionados):**
 
 * **Linguagem:** TypeScript.
-* **Manipulação do Layout:** Utiliza classes como `DBKFileEditor`, `ReaderDBKFileEditor`, `WritterDBKFileEditor` para interagir com a estrutura do arquivo `.DEC` baseada no documento de layout (`IRPF-LeiauteTXT-2023.txt`).
-* **Orquestração:** A classe `GenerateDeclarationUseCase` parece centralizar a lógica de negócio, utilizando outras classes/adaptadores (como `DBKFileGenerator` que usa `WritterDBKFileEditor`) para a geração final.
-* **Testes:** Foco em testes unitários por ativo, carregando dados JSON fragmentados (negociação e movimentação por ativo) para validar cálculos e a geração das seções do `.DEC`. Meta de cobertura de 90%.
+* **Manipulação do Layout:** Utiliza classes como `DBKFileEditor`, `ReaderDBKFileEditor`, `WritterDBKFileEditor` para interagir com a estrutura do arquivo `.DBK` baseada no layout oficial da Receita Federal (pasta `LayoutDBK2025`).
+* **Orquestração:** A classe `GenerateDeclarationUseCase` centraliza a lógica de negócio, utilizando outras classes/adaptadores (como `DBKFileGenerator` que usa `WritterDBKFileEditor`) para a geração final.
+* **Testes:** Foco em testes unitários por ativo, carregando dados JSON fragmentados (negociação e movimentação por ativo) para validar cálculos e a geração das seções do `.DBK`. Meta de cobertura de 90% (configurada em `jest.config.js`).
 
 **Premissas e Restrições (Versão Inicial - V1):**
 

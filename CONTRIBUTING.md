@@ -6,7 +6,7 @@ Agradecemos o seu interesse em contribuir com o projeto Gerador de Relatório IR
 
 ### Reportando Bugs
 
-Se você encontrar um bug, por favor, abra uma [issue](https://github.com/JulioCesar82/gerar-imposto-de-renda/issues) e forneça o máximo de detalhes possível, incluindo:
+Se você encontrar um bug, por favor, abra uma [issue](https://github.com/JulioCesar82/gerar-IR-de-renda-variavel/issues) e forneça o máximo de detalhes possível, incluindo:
 
 -   Uma descrição clara e concisa do bug.
 -   Passos para reproduzir o comportamento.
@@ -16,7 +16,7 @@ Se você encontrar um bug, por favor, abra uma [issue](https://github.com/JulioC
 
 ### Sugerindo Melhorias
 
-Se você tem uma ideia para uma nova funcionalidade ou uma melhoria, sinta-se à vontade para abrir uma [issue](https://github.com/JulioCesar82/gerar-imposto-de-renda/issues) para discutir a sua sugestão.
+Se você tem uma ideia para uma nova funcionalidade ou uma melhoria, sinta-se à vontade para abrir uma [issue](https://github.com/JulioCesar82/gerar-IR-de-renda-variavel/issues) para discutir a sua sugestão.
 
 ### Enviando Pull Requests
 
@@ -27,8 +27,8 @@ Para contribuir com código, siga os seguintes passos:
 
 2.  **Clone o seu Fork:**
     ```bash
-    git clone https://github.com/SEU-USUARIO/gerar-imposto-de-renda.git
-    cd gerar-imposto-de-renda
+    git clone https://github.com/SEU-USUARIO/gerar-IR-de-renda-variavel.git
+    cd gerar-IR-de-renda-variavel
     ```
 
 3.  **Crie uma Nova Branch:**
@@ -74,8 +74,7 @@ Para contribuir com código, siga os seguintes passos:
 
 ## Padrões de Código
 
--   Utilizamos [Prettier](https://prettier.io/) e [ESLint](https://eslint.org/) para manter a consistência do código.
--   Execute `npm run format` para formatar o código antes de fazer o commit.
--   Execute `npm run lint` para verificar se há erros de lint.
+-   Utilizamos [ESLint](https://eslint.org/) (configuração em `package.json`) para verificar a consistência do código. Execute `npm run lint` antes de fazer o commit.
+-   O projeto define um estilo de formatação em `.prettierrc`, mas o [Prettier](https://prettier.io/) ainda não é uma dependência instalada nem possui script `npm run format`. Recomendamos formatar pela extensão do Prettier no seu editor (respeitando o `.prettierrc`) até que isso seja padronizado via npm script.
 
 Agradecemos a sua contribuição!
