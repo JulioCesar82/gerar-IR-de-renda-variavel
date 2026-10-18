@@ -63,6 +63,8 @@ interface AppContextActions {
   generateDeclaration: (taxPayerInfo: TaxPayerInfo, includeInitialPosition: boolean) => Promise<void>;
   generateDBKFile: () => Promise<Blob>;
   generateExcelFile: () => Promise<Blob>;
+  hasOriginalDBK: (sessionId: string) => Promise<boolean>;
+  getOriginalDBKFile: (sessionId: string) => Promise<Blob | null>;
   
   // UI actions
   setActiveStep: (step: number) => void;
@@ -741,8 +743,38 @@ export const AppContextProvider: React.FC<AppContextProviderProps> = ({ children
       console.error('Error generating Excel file:', error);
       throw error;
     }
-  };  
-  
+  };
+
+  /**
+   * Check whether a session has an original .DBK file imported.
+   */
+  const hasOriginalDBK = async (sessionId: string): Promise<boolean> => {
+    try {
+      const storage = container.getStorage();
+      const originalContent = await storage.getOriginalDBK(sessionId);
+      return !!originalContent;
+    } catch (error) {
+      console.error('Error checking original DBK file:', error);
+      return false;
+    }
+  };
+
+  /**
+   * Get the original .DBK file imported for a session, ready for download.
+   * @returns The original .DBK file as a Blob, or null if none was imported.
+   */
+  const getOriginalDBKFile = async (sessionId: string): Promise<Blob | null> => {
+    const storage = container.getStorage();
+    const originalContent = await storage.getOriginalDBK(sessionId);
+
+    if (!originalContent) {
+      return null;
+    }
+
+    return new Blob([originalContent], { type: 'application/octet-stream' });
+  };
+
+
   // Context value
   const contextValue: AppContextType = {
     state: {
@@ -775,6 +807,8 @@ export const AppContextProvider: React.FC<AppContextProviderProps> = ({ children
 
       generateDBKFile,
       generateExcelFile,
+      hasOriginalDBK,
+      getOriginalDBKFile,
       importDBKFile,
 
       setActiveStep: (step) => {

@@ -1262,8 +1262,16 @@ export class AssetProcessor implements AssetProcessorPort {
     const dateAssetTypeGroups = new Map<string, Transaction[]>();
 
     for (const transaction of transactions) {
-      // Ensure transaction and date are valid before proceeding
-      if (!transaction || !transaction.date || !transaction.assetCode) continue;
+      // Ensure transaction and date are valid before proceeding. An invalid Date (e.g. from a
+      // malformed spreadsheet cell) is reported separately by checkInvalidDates — toISOString()
+      // throws on it, so it must be skipped here rather than crashing the whole validation pass.
+      if (
+        !transaction ||
+        !transaction.date ||
+        isNaN(transaction.date.getTime()) ||
+        !transaction.assetCode
+      )
+        continue;
 
       const normalizedAssetCode = getAssetKey(transaction.assetCode);
       const key = `${transaction.date.toISOString()}|${normalizedAssetCode}|${transaction.type}`;

@@ -14,6 +14,7 @@ Esta seção descreve a visão geral do produto, o público-alvo e os objetivos 
 
 Esta seção detalha a arquitetura de software da aplicação, baseada na Arquitetura Hexagonal (Ports and Adapters).
 
+-   **[00-dominios.md](./architecture/00-dominios.md):** Mapeia os grandes domínios de negócio do sistema (atravessando as camadas descritas nos documentos abaixo) e observações de acoplamento entre eles.
 -   **[01-visao-geral.md](./architecture/01-visao-geral.md):** Fornece uma visão geral da arquitetura, seus componentes e o fluxo de dados.
 -   **[02-modelos-dominio.md](./architecture/02-modelos-dominio.md):** Descreve os modelos de domínio centrais da aplicação.
 -   **[03-portas-interfaces.md](./architecture/03-portas-interfaces.md):** Define as portas (interfaces) que separam o domínio da infraestrutura.

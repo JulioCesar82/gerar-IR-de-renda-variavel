@@ -1,8 +1,9 @@
 import * as XLSX from 'xlsx';
 
 import { IRPFDeclaration } from '../../core/domain/IRPFDeclaration';
+import { ReportGeneratorPort } from '../../core/interfaces/ReportGeneratorPort';
 
-export class ExcelReportGenerator {
+export class ExcelReportGenerator implements ReportGeneratorPort {
   /**
    * Gera um arquivo Excel a partir dos dados da declaração do IRPF.
    *
